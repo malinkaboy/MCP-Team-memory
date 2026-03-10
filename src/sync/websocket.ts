@@ -45,7 +45,9 @@ export class SyncWebSocketServer {
       if (this.apiToken) {
         const url = new URL(req.url || '/', `http://${req.headers.host}`);
         const token = url.searchParams.get('token') || req.headers.authorization?.replace(/^Bearer\s+/i, '');
-        if (!token || token !== this.apiToken) {
+        const tokenBuf = Buffer.from(token || '');
+        const expectedBuf = Buffer.from(this.apiToken);
+        if (tokenBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(tokenBuf, expectedBuf)) {
           ws.close(4401, 'Unauthorized');
           return;
         }
