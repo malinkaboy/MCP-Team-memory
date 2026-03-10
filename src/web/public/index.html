@@ -4,8 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Team Memory - Dashboard</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=4">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <!-- Graph visualization: force-graph (2D canvas, d3-force) -->
+  <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
 </head>
 <body>
   <div class="app">
@@ -69,6 +71,12 @@
           <span>Прогресс</span>
           <span class="nav-count" id="count-progress">0</span>
         </button>
+
+        <div class="nav-divider"></div>
+        <button class="nav-item nav-item-graph" id="btn-graph-view">
+          <i data-lucide="network" class="nav-icon"></i>
+          <span>Граф знаний</span>
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -124,6 +132,45 @@
         <div class="loading">
           <i data-lucide="loader-2" class="spin"></i>
           <span>Загрузка...</span>
+        </div>
+      </div>
+
+      <!-- Graph View (hidden by default) -->
+      <div class="graph-view" id="graph-view" style="display:none">
+        <div class="graph-toolbar">
+          <div class="graph-toolbar-left">
+            <button class="btn btn-secondary btn-sm" id="btn-toggle-layout" onclick="toggleLayout()">
+              <i data-lucide="rotate-cw"></i> Reheat
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="graphZoomIn()">
+              <i data-lucide="zoom-in"></i>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="graphZoomOut()">
+              <i data-lucide="zoom-out"></i>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="graphZoomFit()">
+              <i data-lucide="maximize-2"></i>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="resetGraphFilters()">
+              <i data-lucide="refresh-cw"></i> Сброс
+            </button>
+          </div>
+          <div class="graph-toolbar-right">
+            <div class="graph-stats" id="graph-stats"></div>
+            <button class="btn btn-secondary btn-sm" id="btn-toggle-sidebar" onclick="toggleGraphSidebar()" title="Легенда">
+              <i data-lucide="panel-right-close"></i>
+            </button>
+          </div>
+        </div>
+        <div class="graph-body">
+          <div class="graph-canvas-wrap">
+            <div id="graph-container"></div>
+            <div id="graph-tooltip"></div>
+          </div>
+          <div class="graph-sidebar">
+            <div class="graph-legend" id="graph-legend"></div>
+            <div class="graph-detail-panel" id="graph-detail-panel"></div>
+          </div>
         </div>
       </div>
     </main>
@@ -247,6 +294,7 @@
     <div class="toast-container" id="toast-container"></div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=4"></script>
+  <script src="graph.js?v=6"></script>
 </body>
 </html>

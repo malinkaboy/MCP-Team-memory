@@ -12,6 +12,8 @@
     "start:web": "node dist/index.js",
     "start:stdio": "node -e \"process.env.MEMORY_TRANSPORT='stdio'; import('./dist/index.js')\"",
     "dev": "npm run build && npm run start:web",
+    "dev:ui": "npx browser-sync start --proxy \"localhost:3846\" --files \"src/web/public/**/*\" --no-open --port 3847 --no-notify",
+    "dev:watch": "npx chokidar-cli \"src/web/public/**/*\" -c \"npm run copy-static\" --initial",
     "docker:build": "npm run build && docker compose build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",

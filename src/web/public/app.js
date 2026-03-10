@@ -11,6 +11,7 @@ let currentProjectId = '';
 let entries = [];
 let projects = [];
 let ws = null;
+let isGraphView = false;
 
 // Domain display info
 const domainInfo = {
@@ -193,8 +194,10 @@ function populateEntryDomainSelect() {
 
 // Navigation
 function initNavigation() {
-  document.querySelectorAll('.nav-item').forEach(item => {
+  document.querySelectorAll('.nav-item[data-category]').forEach(item => {
     item.addEventListener('click', () => {
+      if (isGraphView) toggleGraphView(false);
+
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
       item.classList.add('active');
 
@@ -205,6 +208,11 @@ function initNavigation() {
   });
 
   document.getElementById('btn-add').addEventListener('click', () => openModal());
+
+  // Graph view toggle
+  document.getElementById('btn-graph-view').addEventListener('click', () => {
+    toggleGraphView(true);
+  });
 
   // Custom project dropdown toggle
   projectSelectTrigger.addEventListener('click', (e) => {
@@ -767,6 +775,54 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// === Graph View Toggle ===
+
+function toggleGraphView(show) {
+  isGraphView = show;
+
+  const entriesEl = document.getElementById('entries-container');
+  const domainEl = document.getElementById('domain-filters');
+  const graphEl = document.getElementById('graph-view');
+  const headerRight = document.querySelector('.header-right');
+
+  if (show) {
+    entriesEl.style.display = 'none';
+    domainEl.style.display = 'none';
+    graphEl.style.display = 'flex';
+    headerRight.style.visibility = 'hidden';
+
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    document.getElementById('btn-graph-view').classList.add('active');
+    pageTitle.textContent = 'Граф знаний';
+
+    // Load all entries for graph (no filters, higher limit)
+    loadGraphEntries();
+  } else {
+    entriesEl.style.display = '';
+    domainEl.style.display = '';
+    graphEl.style.display = 'none';
+    headerRight.style.visibility = '';
+    if (typeof destroyGraph === 'function') destroyGraph();
+  }
+}
+
+async function loadGraphEntries() {
+  try {
+    const params = new URLSearchParams();
+    if (currentProjectId) params.append('project_id', currentProjectId);
+    params.append('limit', '500');
+
+    const response = await fetch(`${API_BASE}/memory?${params}`);
+    const result = await response.json();
+
+    if (result.success && typeof renderGraph === 'function') {
+      renderGraph(result.entries);
+    }
+  } catch (error) {
+    console.error('Failed to load graph entries:', error);
+  }
 }
 
 function showToast(message, type = 'info') {
