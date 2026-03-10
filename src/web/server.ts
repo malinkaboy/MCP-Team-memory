@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import type { MemoryManager } from '../memory/manager.js';
 import type { SyncWebSocketServer } from '../sync/websocket.js';
 import type { Category, Priority, Status } from '../memory/types.js';
+import { ReadParamsSchema, WriteParamsSchema, UpdateParamsSchema, formatZodError } from '../memory/validation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,25 +97,34 @@ export class WebServer {
 
     app.get('/api/memory', async (req: Request, res: Response) => {
       try {
-        const projectId = req.query.project_id as string | undefined;
-        const category = req.query.category as Category | 'all' | undefined;
-        const domain = req.query.domain as string | undefined;
-        const search = req.query.search as string | undefined;
-        const status = req.query.status as Status | undefined;
-        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+        const parsed = ReadParamsSchema.safeParse({
+          project_id: req.query.project_id,
+          category: req.query.category || 'all',
+          domain: req.query.domain,
+          search: req.query.search,
+          status: req.query.status,
+          limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
+        });
 
+        if (!parsed.success) {
+          res.status(400).json({ success: false, error: formatZodError(parsed.error) });
+          return;
+        }
+
+        const { project_id, category, domain, search, status, limit } = parsed.data;
         const entries = await this.memoryManager.read({
-          projectId,
-          category: category || 'all',
+          projectId: project_id,
+          category,
           domain,
           search,
           status,
-          limit
+          limit,
         });
 
         res.json({ success: true, entries });
       } catch (error) {
-        res.status(500).json({ success: false, error: (error as Error).message });
+        console.error('API error:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
 
@@ -144,45 +154,30 @@ export class WebServer {
 
     app.post('/api/memory', async (req: Request, res: Response) => {
       try {
-        const { project_id, category, domain, title, content, tags, priority, author } = req.body;
-
-        if (!category || !title || !content) {
-          res.status(400).json({ success: false, error: 'Missing required: category, title, content' });
+        const parsed = WriteParamsSchema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({ success: false, error: formatZodError(parsed.error) });
           return;
         }
 
-        const entry = await this.memoryManager.write({
-          projectId: project_id,
-          category: category as Category,
-          domain,
-          title,
-          content,
-          tags: tags || [],
-          priority: (priority as Priority) || 'medium',
-          author: author || 'web-ui'
-        });
-
+        const { project_id, ...writeData } = parsed.data;
+        const entry = await this.memoryManager.write({ ...writeData, projectId: project_id });
         res.json({ success: true, entry });
       } catch (error) {
-        res.status(500).json({ success: false, error: (error as Error).message });
+        console.error('API error:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
 
     app.put('/api/memory/:id', async (req: Request, res: Response) => {
       try {
-        const { id } = req.params;
-        const { title, content, domain, status, tags, priority } = req.body;
+        const parsed = UpdateParamsSchema.safeParse({ id: req.params.id, ...req.body });
+        if (!parsed.success) {
+          res.status(400).json({ success: false, error: formatZodError(parsed.error) });
+          return;
+        }
 
-        const updated = await this.memoryManager.update({
-          id,
-          title,
-          content,
-          domain,
-          status: status as Status | undefined,
-          tags,
-          priority: priority as Priority | undefined
-        });
-
+        const updated = await this.memoryManager.update(parsed.data);
         if (!updated) {
           res.status(404).json({ success: false, error: 'Entry not found' });
           return;
@@ -190,7 +185,8 @@ export class WebServer {
 
         res.json({ success: true, entry: updated });
       } catch (error) {
-        res.status(500).json({ success: false, error: (error as Error).message });
+        console.error('API error:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
 
