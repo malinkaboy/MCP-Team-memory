@@ -16,6 +16,7 @@ import { SyncWebSocketServer } from './sync/websocket.js';
 import { migrateFromJson } from './storage/migration.js';
 import { loadConfig } from './config.js';
 import { createAuthMiddleware } from './middleware/auth.js';
+import { createRateLimiter } from './middleware/rate-limit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,6 +49,9 @@ async function main(): Promise<void> {
 
   // Auth middleware (optional — set MEMORY_API_TOKEN to enable)
   app.use(createAuthMiddleware(config.apiToken));
+
+  // Rate limiting
+  app.use(createRateLimiter({ windowMs: 60_000, maxRequests: 100 }));
 
   // Mount MCP StreamableHTTP transport
   mountMcpTransport(app, () => buildMcpServer(memoryManager));
