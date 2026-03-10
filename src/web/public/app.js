@@ -209,6 +209,16 @@ function initNavigation() {
 
   document.getElementById('btn-add').addEventListener('click', () => openModal());
 
+  document.getElementById('btn-export').addEventListener('click', () => {
+    const params = new URLSearchParams();
+    if (currentProjectId) params.append('project_id', currentProjectId);
+    params.append('format', 'markdown');
+    if (currentCategory !== 'all' && currentCategory !== 'pinned') {
+      params.append('category', currentCategory);
+    }
+    window.open(`${API_BASE}/export?${params}`, '_blank');
+  });
+
   // Graph view toggle
   document.getElementById('btn-graph-view').addEventListener('click', () => {
     toggleGraphView(true);
@@ -603,6 +613,9 @@ function renderEntries() {
           <button onclick="editEntry('${entry.id}')" title="Редактировать">
             <i data-lucide="pencil"></i>
           </button>
+          <button onclick="showHistory('${entry.id}')" title="История">
+            <i data-lucide="history"></i>
+          </button>
           <button onclick="archiveEntry('${entry.id}')" title="Архивировать">
             <i data-lucide="archive"></i>
           </button>
@@ -693,6 +706,32 @@ window.togglePin = async function(id) {
     }
   } catch (error) {
     showToast('Ошибка при изменении закрепления', 'error');
+  }
+};
+
+window.showHistory = async function(id) {
+  try {
+    const response = await fetch(`${API_BASE}/memory/${id}/history`);
+    const result = await response.json();
+
+    if (!result.success) {
+      showToast(result.error || 'Ошибка загрузки истории', 'error');
+      return;
+    }
+
+    if (result.versions.length === 0) {
+      showToast('Запись ещё не обновлялась — история пуста', 'info');
+      return;
+    }
+
+    const text = result.versions.map(v =>
+      `v${v.version} [${new Date(v.createdAt).toLocaleString()}]\n  ${v.title} (${v.status})`
+    ).join('\n\n');
+
+    alert(`История версий:\n\n${text}`);
+  } catch (error) {
+    showToast('Ошибка загрузки истории', 'error');
+    console.error(error);
   }
 };
 
