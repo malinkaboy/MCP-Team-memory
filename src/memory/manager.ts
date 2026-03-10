@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { PgStorage } from '../storage/pg-storage.js';
+import { AuditLogger } from '../storage/audit.js';
 import type {
   MemoryEntry,
   Project,
@@ -21,11 +22,13 @@ type EventListener = (event: WSEvent) => void;
 
 export class MemoryManager {
   private storage: PgStorage;
+  private auditLogger: AuditLogger | null = null;
   private listeners: Set<EventListener> = new Set();
   private autoArchiveInterval: NodeJS.Timeout | null = null;
 
-  constructor(storage: PgStorage) {
+  constructor(storage: PgStorage, auditLogger?: AuditLogger) {
     this.storage = storage;
+    this.auditLogger = auditLogger || null;
   }
 
   async initialize(): Promise<void> {
@@ -121,6 +124,13 @@ export class MemoryManager {
 
     const created = await this.storage.add(entry);
     this.emit('memory:created', created);
+    this.auditLogger?.log({
+      entryId: created.id,
+      projectId: created.projectId,
+      action: 'create',
+      actor: created.author,
+      changes: { title: created.title, category: created.category },
+    }).catch(err => console.error('Audit log failed:', err));
     return created;
   }
 
@@ -135,6 +145,15 @@ export class MemoryManager {
 
     if (updated) {
       this.emit('memory:updated', updated);
+      this.auditLogger?.log({
+        entryId: updated.id,
+        projectId: updated.projectId,
+        action: 'update',
+        actor: updated.author,
+        changes: Object.fromEntries(
+          Object.entries(params).filter(([k]) => k !== 'id')
+        ),
+      }).catch(err => console.error('Audit log failed:', err));
       return updated;
     }
 
@@ -148,6 +167,12 @@ export class MemoryManager {
       const archived = await this.storage.archive(id);
       if (archived) {
         this.emit('memory:updated', archived);
+        this.auditLogger?.log({
+          entryId: id,
+          projectId: archived.projectId,
+          action: 'archive',
+          actor: archived.author,
+        }).catch(err => console.error('Audit log failed:', err));
         return true;
       }
       return false;
@@ -156,6 +181,11 @@ export class MemoryManager {
     const deleted = await this.storage.delete(id);
     if (deleted) {
       this.emit('memory:deleted', { id });
+      this.auditLogger?.log({
+        entryId: id,
+        action: 'delete',
+        actor: 'system',
+      }).catch(err => console.error('Audit log failed:', err));
       return true;
     }
     return false;
@@ -165,9 +195,19 @@ export class MemoryManager {
     const updated = await this.storage.update(id, { pinned });
     if (updated) {
       this.emit('memory:updated', updated);
+      this.auditLogger?.log({
+        entryId: updated.id,
+        projectId: updated.projectId,
+        action: pinned ? 'pin' : 'unpin',
+        actor: updated.author,
+      }).catch(err => console.error('Audit log failed:', err));
       return updated;
     }
     return null;
+  }
+
+  getAuditLogger(): AuditLogger | null {
+    return this.auditLogger;
   }
 
   // === Sync ===

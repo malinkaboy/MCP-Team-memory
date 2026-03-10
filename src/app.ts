@@ -17,6 +17,7 @@ import { migrateFromJson } from './storage/migration.js';
 import { loadConfig } from './config.js';
 import { createAuthMiddleware } from './middleware/auth.js';
 import { createRateLimiter } from './middleware/rate-limit.js';
+import { AuditLogger } from './storage/audit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,7 +34,8 @@ async function main(): Promise<void> {
 
   // Initialize storage
   const storage = new PgStorage(config.databaseUrl);
-  const memoryManager = new MemoryManager(storage);
+  const auditLogger = new AuditLogger(storage.getPool());
+  const memoryManager = new MemoryManager(storage, auditLogger);
   await memoryManager.initialize();
 
   // Auto-migrate from JSON if needed

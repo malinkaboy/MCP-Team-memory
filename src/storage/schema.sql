@@ -80,6 +80,22 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- Audit log table
+CREATE TABLE IF NOT EXISTS audit_log (
+    id          BIGSERIAL PRIMARY KEY,
+    entry_id    UUID,
+    project_id  UUID,
+    action      TEXT NOT NULL CHECK (action IN ('create','update','delete','archive','unarchive','pin','unpin')),
+    actor       TEXT NOT NULL DEFAULT 'unknown',
+    changes     JSONB DEFAULT '{}',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_entry    ON audit_log(entry_id);
+CREATE INDEX IF NOT EXISTS idx_audit_project  ON audit_log(project_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created  ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_action   ON audit_log(action);
+
 -- Schema version tracking
 CREATE TABLE IF NOT EXISTS schema_meta (
     key   TEXT PRIMARY KEY,

@@ -71,6 +71,10 @@ export class PgStorage {
     console.error('PgStorage initialized');
   }
 
+  getPool(): pg.Pool {
+    return this.pool;
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
   }
