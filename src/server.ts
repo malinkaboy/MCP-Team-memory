@@ -342,6 +342,8 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
               return { content: [{ type: 'text', text: d ? `🗑️ Проект удалён (${projectAction.id})` : `❌ Не найден или default.` }] };
             }
           }
+          // All cases return above; this is a safety break
+          break;
         }
 
         case 'memory_audit': {

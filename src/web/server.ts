@@ -293,7 +293,11 @@ export class WebServer {
     app.get('/api/export', async (req: Request, res: Response) => {
       try {
         const projectId = req.query.project_id as string | undefined;
-        const format = (req.query.format as ExportFormat) || 'markdown';
+        const format = (req.query.format as string) || 'markdown';
+        if (format !== 'markdown' && format !== 'json') {
+          res.status(400).json({ success: false, error: 'Invalid format. Supported: markdown, json' });
+          return;
+        }
         const category = (req.query.category as string) || 'all';
 
         const entries = await this.memoryManager.read({

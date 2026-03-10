@@ -4,7 +4,7 @@
 import { readFileSync, existsSync, renameSync } from 'fs';
 import { PgStorage } from './pg-storage.js';
 import type { MemoryStore, MemoryEntry, LegacyMemoryEntry } from '../memory/types.js';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 
 const DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -42,7 +42,7 @@ export async function migrateFromJson(
   for (const legacy of store.entries) {
     try {
       const entry: MemoryEntry = {
-        id: legacy.id || uuidv4(),
+        id: legacy.id || crypto.randomUUID(),
         projectId: DEFAULT_PROJECT_ID,
         category: legacy.category,
         domain: null,

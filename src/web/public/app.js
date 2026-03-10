@@ -810,12 +810,6 @@ function formatDate(dateString) {
   return date.toLocaleDateString('ru-RU');
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
 // === Graph View Toggle ===
 
 function toggleGraphView(show) {

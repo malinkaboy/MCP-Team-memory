@@ -20,24 +20,19 @@ export class VersionManager {
   constructor(private pool: pg.Pool) {}
 
   async saveVersion(entry: MemoryEntry): Promise<number> {
-    const { rows: versionRows } = await this.pool.query(
-      `SELECT COALESCE(MAX(version), 0) + 1 as next_version
-       FROM entry_versions WHERE entry_id = $1`,
-      [entry.id]
-    );
-    const nextVersion = versionRows[0].next_version as number;
-
-    await this.pool.query(
+    const { rows } = await this.pool.query(
       `INSERT INTO entry_versions (entry_id, version, title, content, domain, category, tags, priority, status, author)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+       SELECT $1, COALESCE(MAX(version), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9
+       FROM entry_versions WHERE entry_id = $1
+       RETURNING version`,
       [
-        entry.id, nextVersion, entry.title, entry.content,
+        entry.id, entry.title, entry.content,
         entry.domain, entry.category, entry.tags, entry.priority,
         entry.status, entry.author,
       ]
     );
 
-    return nextVersion;
+    return rows[0].version as number;
   }
 
   async getVersions(entryId: string): Promise<EntryVersion[]> {

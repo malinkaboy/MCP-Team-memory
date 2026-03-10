@@ -2,7 +2,7 @@ import pg from 'pg';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import type { MemoryEntry, Project, ReadParams, DEFAULT_DOMAINS } from '../memory/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -100,7 +100,7 @@ export class PgStorage {
     description?: string;
     domains?: string[];
   }): Promise<Project> {
-    const id = uuidv4();
+    const id = crypto.randomUUID();
     const { DEFAULT_DOMAINS: defaultDomains } = await import('../memory/types.js');
     const { rows } = await this.pool.query(
       `INSERT INTO projects (id, name, description, domains)

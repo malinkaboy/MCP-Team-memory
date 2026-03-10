@@ -6,7 +6,7 @@ interface RateLimitEntry {
 }
 
 /**
- * Simple in-memory sliding-window rate limiter.
+ * Simple in-memory fixed-window rate limiter.
  * No external dependencies needed for single-instance deployment.
  */
 export function createRateLimiter(options: {
@@ -48,9 +48,11 @@ export function createRateLimiter(options: {
     res.setHeader('X-RateLimit-Reset', Math.ceil(entry.resetAt / 1000));
 
     if (entry.count > maxRequests) {
+      const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+      res.setHeader('Retry-After', retryAfter);
       res.status(429).json({
         error: 'Too many requests',
-        retryAfter: Math.ceil((entry.resetAt - now) / 1000),
+        retryAfter,
       });
       return;
     }

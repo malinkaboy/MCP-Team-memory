@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { PgStorage } from '../storage/pg-storage.js';
 import { AuditLogger } from '../storage/audit.js';
 import { VersionManager } from '../storage/versioning.js';
@@ -109,7 +109,7 @@ export class MemoryManager {
     const now = new Date().toISOString();
 
     const entry: MemoryEntry = {
-      id: uuidv4(),
+      id: crypto.randomUUID(),
       projectId: params.projectId || DEFAULT_PROJECT_ID,
       category: params.category,
       domain: params.domain || null,

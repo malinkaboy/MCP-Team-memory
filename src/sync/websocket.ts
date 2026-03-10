@@ -15,10 +15,12 @@ export class SyncWebSocketServer {
   private wss: WebSocketServer | null = null;
   private clients: Map<string, ConnectedClient> = new Map();
   private memoryManager: MemoryManager;
+  private apiToken: string | undefined;
   private unsubscribe: (() => void) | null = null;
 
-  constructor(memoryManager: MemoryManager) {
+  constructor(memoryManager: MemoryManager, apiToken?: string) {
     this.memoryManager = memoryManager;
+    this.apiToken = apiToken;
   }
 
   /** Start WebSocket on a standalone port */
@@ -39,6 +41,16 @@ export class SyncWebSocketServer {
     if (!this.wss) return;
 
     this.wss.on('connection', (ws, req) => {
+      // Verify token if auth is enabled
+      if (this.apiToken) {
+        const url = new URL(req.url || '/', `http://${req.headers.host}`);
+        const token = url.searchParams.get('token') || req.headers.authorization?.replace(/^Bearer\s+/i, '');
+        if (!token || token !== this.apiToken) {
+          ws.close(4401, 'Unauthorized');
+          return;
+        }
+      }
+
       const clientId = this.generateClientId();
       const clientName = req.headers['x-agent-name']?.toString() || `agent-${clientId.slice(0, 8)}`;
 
