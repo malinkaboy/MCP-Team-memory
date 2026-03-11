@@ -132,7 +132,8 @@ export class SyncWebSocketServer {
         break;
 
       case 'sync_request':
-        this.handleSyncRequest(client, msg.payload as { since?: string });
+        this.handleSyncRequest(client, msg.payload as { since?: string })
+          .catch(err => console.error('Sync request error:', err));
         break;
 
       case 'rename': {
@@ -171,7 +172,9 @@ export class SyncWebSocketServer {
 
   private sendToClient(ws: WebSocket, event: WSEvent): void {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(event));
+      ws.send(JSON.stringify(event), (err) => {
+        if (err) console.error('WebSocket send failed:', err);
+      });
     }
   }
 
@@ -179,7 +182,9 @@ export class SyncWebSocketServer {
     const message = JSON.stringify(event);
     this.clients.forEach((client) => {
       if (client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(message);
+        client.ws.send(message, (err) => {
+          if (err) console.error(`WebSocket broadcast failed for ${client.name}:`, err);
+        });
       }
     });
   }
@@ -188,7 +193,9 @@ export class SyncWebSocketServer {
     const message = JSON.stringify(event);
     this.clients.forEach((client, id) => {
       if (id !== excludeId && client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(message);
+        client.ws.send(message, (err) => {
+          if (err) console.error(`WebSocket broadcast failed for ${client.name}:`, err);
+        });
       }
     });
   }

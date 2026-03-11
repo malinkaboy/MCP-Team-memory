@@ -12,9 +12,11 @@ interface RateLimitEntry {
 export function createRateLimiter(options: {
   windowMs?: number;   // Time window in ms (default: 60s)
   maxRequests?: number; // Max requests per window (default: 100)
+  maxClients?: number;  // Max tracked IPs (default: 10_000)
 } = {}) {
   const windowMs = options.windowMs ?? 60_000;
   const maxRequests = options.maxRequests ?? 100;
+  const maxClients = options.maxClients ?? 10_000;
   const store = new Map<string, RateLimitEntry>();
 
   // Cleanup expired entries every windowMs
@@ -37,6 +39,11 @@ export function createRateLimiter(options: {
 
     let entry = store.get(key);
     if (!entry || now > entry.resetAt) {
+      // Evict oldest entry if at capacity
+      if (!entry && store.size >= maxClients) {
+        const firstKey = store.keys().next().value;
+        if (firstKey !== undefined) store.delete(firstKey);
+      }
       entry = { count: 0, resetAt: now + windowMs };
       store.set(key, entry);
     }
