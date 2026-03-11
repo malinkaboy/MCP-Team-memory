@@ -92,7 +92,8 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
               description: 'Приоритет записи'
             },
             author: { type: 'string', description: 'Автор записи' },
-            pinned: { type: 'boolean', default: false, description: 'Закрепить запись' }
+            pinned: { type: 'boolean', default: false, description: 'Закрепить запись' },
+            relatedIds: { type: 'array', items: { type: 'string' }, description: 'UUID связанных записей для построения графа знаний' }
           },
           required: ['category', 'title', 'content']
         }
@@ -110,7 +111,8 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
             status: { type: 'string', enum: ['active', 'completed', 'archived'], description: 'Новый статус' },
             tags: { type: 'array', items: { type: 'string' }, description: 'Новые теги' },
             priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Новый приоритет' },
-            pinned: { type: 'boolean', description: 'Закрепить/открепить' }
+            pinned: { type: 'boolean', description: 'Закрепить/открепить' },
+            relatedIds: { type: 'array', items: { type: 'string' }, description: 'UUID связанных записей для построения графа знаний' }
           },
           required: ['id']
         }
@@ -214,8 +216,21 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
     return { tools };
   });
 
+  // Some MCP clients serialize arrays as JSON strings — parse them back
+  function coerceArrayFields(obj: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+    if (!obj) return obj;
+    const result = { ...obj };
+    for (const [key, value] of Object.entries(result)) {
+      if (typeof value === 'string' && value.startsWith('[')) {
+        try { result[key] = JSON.parse(value); } catch { /* keep as string */ }
+      }
+    }
+    return result;
+  }
+
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
+    const { name, arguments: rawArgs } = request.params;
+    const args = coerceArrayFields(rawArgs);
 
     try {
       switch (name) {
@@ -240,7 +255,8 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
             const pi = e.priority === 'critical' ? '🔴' : e.priority === 'high' ? '🟠' : e.priority === 'medium' ? '🟡' : '🟢';
             const pin = e.pinned ? '📌 ' : '';
             const dom = e.domain ? ` | **Домен**: ${e.domain}` : '';
-            return `## ${pin}${pi} ${e.title}\n**ID**: ${e.id}\n**Категория**: ${e.category}${dom} | **Статус**: ${e.status} | **Автор**: ${e.author}${e.pinned ? ' | 📌' : ''}\n**Теги**: ${e.tags.join(', ') || 'нет'}\n**Обновлено**: ${new Date(e.updatedAt).toLocaleString()}\n\n${e.content}\n\n---`;
+            const rel = e.relatedIds && e.relatedIds.length > 0 ? `\n**Связи**: ${e.relatedIds.join(', ')}` : '';
+            return `## ${pin}${pi} ${e.title}\n**ID**: ${e.id}\n**Категория**: ${e.category}${dom} | **Статус**: ${e.status} | **Автор**: ${e.author}${e.pinned ? ' | 📌' : ''}\n**Теги**: ${e.tags.join(', ') || 'нет'}${rel}\n**Обновлено**: ${new Date(e.updatedAt).toLocaleString()}\n\n${e.content}\n\n---`;
           }).join('\n\n');
           return { content: [{ type: 'text', text: `# Командная память (${entries.length} записей)\n\n${formatted}` }] };
         }
@@ -255,8 +271,9 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
           const entry = await memoryManager.write(params);
           const domTxt = entry.domain ? `\n**Домен**: ${entry.domain}` : '';
           const pinTxt = entry.pinned ? '\n📌 Закреплена' : '';
+          const relTxt = entry.relatedIds && entry.relatedIds.length > 0 ? `\n**Связи**: ${entry.relatedIds.length} записей` : '';
           return {
-            content: [{ type: 'text', text: `✅ Запись добавлена!\n\n**ID**: ${entry.id}\n**Заголовок**: ${entry.title}\n**Категория**: ${entry.category}${domTxt}\n**Приоритет**: ${entry.priority}${pinTxt}` }]
+            content: [{ type: 'text', text: `✅ Запись добавлена!\n\n**ID**: ${entry.id}\n**Заголовок**: ${entry.title}\n**Категория**: ${entry.category}${domTxt}\n**Приоритет**: ${entry.priority}${pinTxt}${relTxt}` }]
           };
         }
 

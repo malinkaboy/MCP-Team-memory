@@ -288,6 +288,8 @@ function renderGraph(entries) {
       ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
       ctx.restore();
     })
+    .minZoom(0.1)
+    .maxZoom(20)
     .cooldownTicks(200)
     .warmupTicks(50)
     .d3AlphaDecay(0.02)
@@ -463,14 +465,14 @@ function updateGraphStats(data) {
 function graphZoomIn() {
   if (!graphRef) return;
   const z = graphRef.zoom();
-  graphRef.zoom(z * 1.5, 200);
+  graphRef.zoom(Math.min(z * 1.5, 20), 200);
 }
 window.graphZoomIn = graphZoomIn;
 
 function graphZoomOut() {
   if (!graphRef) return;
   const z = graphRef.zoom();
-  graphRef.zoom(z / 1.5, 200);
+  graphRef.zoom(Math.max(z / 1.5, 0.1), 200);
 }
 window.graphZoomOut = graphZoomOut;
 
