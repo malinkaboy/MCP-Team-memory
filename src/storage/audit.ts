@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { toISOString } from './utils.js';
 
 export type AuditAction = 'create' | 'update' | 'delete' | 'archive' | 'unarchive' | 'pin' | 'unpin';
 
@@ -40,7 +41,7 @@ export class AuditLogger {
       `SELECT * FROM audit_log WHERE entry_id = $1 ORDER BY created_at DESC LIMIT $2`,
       [entryId, limit]
     );
-    return rows.map(this.rowToAudit);
+    return rows.map((row) => this.rowToAudit(row));
   }
 
   async getByProject(projectId: string, limit = 100): Promise<AuditEntry[]> {
@@ -48,7 +49,7 @@ export class AuditLogger {
       `SELECT * FROM audit_log WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2`,
       [projectId, limit]
     );
-    return rows.map(this.rowToAudit);
+    return rows.map((row) => this.rowToAudit(row));
   }
 
   async getRecent(limit = 50): Promise<AuditEntry[]> {
@@ -56,7 +57,7 @@ export class AuditLogger {
       `SELECT * FROM audit_log ORDER BY created_at DESC LIMIT $1`,
       [limit]
     );
-    return rows.map(this.rowToAudit);
+    return rows.map((row) => this.rowToAudit(row));
   }
 
   private rowToAudit(row: Record<string, unknown>): AuditEntry {
@@ -67,7 +68,7 @@ export class AuditLogger {
       action: row.action as AuditAction,
       actor: row.actor as string,
       changes: (row.changes as Record<string, unknown>) || {},
-      createdAt: (row.created_at as Date).toISOString(),
+      createdAt: toISOString(row.created_at),
     };
   }
 }

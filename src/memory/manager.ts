@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { PgStorage } from '../storage/pg-storage.js';
 import { AuditLogger } from '../storage/audit.js';
 import { VersionManager } from '../storage/versioning.js';
+import { DEFAULT_PROJECT_ID } from './types.js';
 import type {
   MemoryEntry,
   Project,
@@ -16,8 +17,6 @@ import type {
   WSEvent,
   WSEventType
 } from './types.js';
-
-const DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
 
 type EventListener = (event: WSEvent) => void;
 
@@ -191,13 +190,16 @@ export class MemoryManager {
       return false;
     }
 
+    // Fetch entry before hard-delete to get projectId for audit
+    const existing = await this.storage.getById(id);
     const deleted = await this.storage.delete(id);
     if (deleted) {
       this.emit('memory:deleted', { id });
       this.auditLogger?.log({
         entryId: id,
+        projectId: existing?.projectId,
         action: 'delete',
-        actor: 'system',
+        actor: existing?.author || 'system',
       }).catch(err => console.error('Audit log failed:', err));
       return true;
     }

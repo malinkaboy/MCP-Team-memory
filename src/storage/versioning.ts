@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import type { MemoryEntry } from '../memory/types.js';
+import { toISOString } from './utils.js';
 
 export interface EntryVersion {
   id: number;
@@ -44,7 +45,7 @@ export class VersionManager {
       `SELECT * FROM entry_versions WHERE entry_id = $1 ORDER BY version DESC`,
       [entryId]
     );
-    return rows.map(this.rowToVersion);
+    return rows.map((row) => this.rowToVersion(row));
   }
 
   async getVersion(entryId: string, version: number): Promise<EntryVersion | null> {
@@ -68,7 +69,7 @@ export class VersionManager {
       priority: row.priority as string,
       status: row.status as string,
       author: row.author as string,
-      createdAt: (row.created_at as Date).toISOString(),
+      createdAt: toISOString(row.created_at),
     };
   }
 }

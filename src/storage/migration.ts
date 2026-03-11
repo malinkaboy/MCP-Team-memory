@@ -3,10 +3,9 @@
  */
 import { readFileSync, existsSync, renameSync } from 'fs';
 import { PgStorage } from './pg-storage.js';
+import { DEFAULT_PROJECT_ID } from '../memory/types.js';
 import type { MemoryStore, MemoryEntry, LegacyMemoryEntry } from '../memory/types.js';
 import crypto from 'crypto';
-
-const DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
 
 export interface MigrationResult {
   migrated: number;

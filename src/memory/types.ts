@@ -15,6 +15,9 @@ export type Status = 'active' | 'completed' | 'archived';
 // Режимы синхронизации
 export type SyncMode = 'auto' | 'manual' | 'both';
 
+/** Default project UUID — used when no project_id is specified */
+export const DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
+
 // Домены по умолчанию
 export const DEFAULT_DOMAINS: string[] = [
   'backend',

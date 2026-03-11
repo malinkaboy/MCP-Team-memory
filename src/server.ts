@@ -475,8 +475,9 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
         : 'Нет изменений за 24 часа.';
       return { contents: [{ uri, mimeType: 'text/markdown', text: `# Последние изменения\n\n${text}` }] };
     }
+    const VALID_CATEGORIES = ['architecture', 'tasks', 'decisions', 'issues', 'progress'];
     const m = uri.match(/^memory:\/\/(\w+)$/);
-    if (m) {
+    if (m && VALID_CATEGORIES.includes(m[1])) {
       const category = m[1] as Category;
       const entries = await memoryManager.read({ category, status: 'active' });
       const text = entries.length > 0 ? entries.map(e => `## ${e.title}\n${e.content}\n\n---`).join('\n\n') : `Нет записей.`;

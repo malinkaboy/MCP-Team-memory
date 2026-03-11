@@ -52,8 +52,11 @@ async function main(): Promise<void> {
   app.use(express.json({ limit: '1mb' }));
 
   // CORS — allow configurable origins
+  const allowedOrigin = process.env.MEMORY_CORS_ORIGIN || '*';
+  if (allowedOrigin === '*') {
+    console.error('WARNING: CORS origin is set to "*" — all origins allowed. Set MEMORY_CORS_ORIGIN for production.');
+  }
   app.use((_req, res, next) => {
-    const allowedOrigin = process.env.MEMORY_CORS_ORIGIN || '*';
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');

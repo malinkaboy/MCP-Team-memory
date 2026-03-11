@@ -3,12 +3,12 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import type { MemoryEntry, Project, ReadParams, DEFAULT_DOMAINS } from '../memory/types.js';
+import { DEFAULT_PROJECT_ID } from '../memory/types.js';
+import type { MemoryEntry, Project, ReadParams } from '../memory/types.js';
+import { toISOString } from './utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
 
 /** Escape ILIKE special characters to prevent wildcard injection */
 export function escapeIlike(query: string): string {
@@ -29,8 +29,8 @@ function rowToEntry(row: Record<string, unknown>): MemoryEntry {
     priority: row.priority as MemoryEntry['priority'],
     status: row.status as MemoryEntry['status'],
     pinned: row.pinned as boolean,
-    createdAt: (row.created_at as Date).toISOString(),
-    updatedAt: (row.updated_at as Date).toISOString(),
+    createdAt: toISOString(row.created_at),
+    updatedAt: toISOString(row.updated_at),
     relatedIds: (row.related_ids as string[]) || [],
   };
 }
@@ -42,8 +42,8 @@ function rowToProject(row: Record<string, unknown>): Project {
     name: row.name as string,
     description: (row.description as string) || '',
     domains: (row.domains as string[]) || [],
-    createdAt: (row.created_at as Date).toISOString(),
-    updatedAt: (row.updated_at as Date).toISOString(),
+    createdAt: toISOString(row.created_at),
+    updatedAt: toISOString(row.updated_at),
   };
 }
 
@@ -395,6 +395,6 @@ export class PgStorage {
       `SELECT MAX(updated_at) as last FROM entries WHERE project_id = $1`,
       [projectId]
     );
-    return rows[0]?.last ? (rows[0].last as Date).toISOString() : new Date().toISOString();
+    return rows[0]?.last ? toISOString(rows[0].last) : new Date().toISOString();
   }
 }
