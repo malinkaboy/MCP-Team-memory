@@ -7,7 +7,7 @@ let currentCategory = 'all';
 let currentSearch = '';
 let currentStatus = '';
 let currentDomain = '';
-let currentProjectId = '';
+let currentProjectId = localStorage.getItem('selected-project') || '';
 let entries = [];
 let projects = [];
 let ws = null;
@@ -174,6 +174,7 @@ function selectDomain(domain) {
 
 function switchProject(projectId) {
   currentProjectId = projectId;
+  localStorage.setItem('selected-project', projectId);
   currentDomain = '';
   renderDomainFilters();
   populateEntryDomainSelect();
