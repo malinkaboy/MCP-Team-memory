@@ -5,9 +5,10 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc && npm run copy-static && npm run copy-sql",
+    "build": "tsc && npm run copy-static && npm run copy-sql && npm run copy-migrations",
     "copy-static": "cpy \"src/web/public/**/*\" dist/web/public/",
     "copy-sql": "cpy \"src/storage/schema.sql\" dist/storage/ --flat",
+    "copy-migrations": "cpy \"src/storage/migrations/*.sql\" dist/storage/migrations/",
     "start": "node dist/index.js",
     "start:web": "node dist/index.js",
     "start:stdio": "node -e \"process.env.MEMORY_TRANSPORT='stdio'; import('./dist/index.js')\"",

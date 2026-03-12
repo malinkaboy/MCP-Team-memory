@@ -1,8 +1,8 @@
 import pg from 'pg';
-import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import { Migrator } from './migrator.js';
 import { DEFAULT_PROJECT_ID } from '../memory/types.js';
 import type { MemoryEntry, Project, ReadParams } from '../memory/types.js';
 import { toISOString } from './utils.js';
@@ -64,19 +64,10 @@ export class PgStorage {
   }
 
   async initialize(): Promise<void> {
-    // Run schema SQL
-    const schemaPath = path.join(__dirname, 'schema.sql');
-    let schemaSql: string;
-    try {
-      schemaSql = readFileSync(schemaPath, 'utf-8');
-    } catch {
-      // In compiled dist, schema.sql is alongside the JS file
-      const distSchemaPath = path.join(__dirname, '..', 'storage', 'schema.sql');
-      schemaSql = readFileSync(distSchemaPath, 'utf-8');
-    }
-    await this.pool.query(schemaSql);
+    const migrationsDir = path.join(__dirname, 'migrations');
+    const migrator = new Migrator(this.pool, migrationsDir);
+    await migrator.run();
 
-    // Ensure default project exists
     await this.ensureDefaultProject();
 
     logger.info('PgStorage initialized');
