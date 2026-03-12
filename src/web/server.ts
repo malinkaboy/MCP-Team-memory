@@ -20,6 +20,10 @@ export class WebServer {
     this.wsServer = wsServer;
   }
 
+  setWsServer(wsServer: SyncWebSocketServer): void {
+    this.wsServer = wsServer;
+  }
+
   /** Mount REST API routes onto an existing Express app (for unified mode) */
   mountRoutes(app: Express): void {
     this.setupRoutes(app);

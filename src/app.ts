@@ -93,6 +93,7 @@ async function main(): Promise<void> {
   // Attach WebSocket to the same HTTP server
   const wsServer = new SyncWebSocketServer(memoryManager, config.apiToken);
   wsServer.attachToServer(server);
+  webServer.setWsServer(wsServer);
 
   // Auto-archive
   if (config.autoArchiveEnabled) {
