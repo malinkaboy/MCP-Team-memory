@@ -3,6 +3,7 @@ import { PgStorage } from '../storage/pg-storage.js';
 import { AuditLogger } from '../storage/audit.js';
 import { VersionManager } from '../storage/versioning.js';
 import { DEFAULT_PROJECT_ID } from './types.js';
+import logger from '../logger.js';
 import type {
   MemoryEntry,
   Project,
@@ -35,7 +36,7 @@ export class MemoryManager {
 
   async initialize(): Promise<void> {
     await this.storage.initialize();
-    console.error('Memory Manager initialized');
+    logger.info('Memory Manager initialized');
   }
 
   async close(): Promise<void> {
@@ -138,7 +139,7 @@ export class MemoryManager {
       action: 'create',
       actor: created.author,
       changes: { title: created.title, category: created.category },
-    }).catch(err => console.error('Audit log failed:', err));
+    }).catch(err => logger.error({ err }, 'Audit log failed'));
     return created;
   }
 
@@ -154,7 +155,7 @@ export class MemoryManager {
       const current = await this.storage.getById(id);
       if (current) {
         await this.versionManager.saveVersion(current).catch(err =>
-          console.error('Version save failed:', err)
+          logger.error({ err }, 'Version save failed')
         );
       }
     }
@@ -171,7 +172,7 @@ export class MemoryManager {
         changes: Object.fromEntries(
           Object.entries(params).filter(([k]) => k !== 'id')
         ),
-      }).catch(err => console.error('Audit log failed:', err));
+      }).catch(err => logger.error({ err }, 'Audit log failed'));
       return updated;
     }
 
@@ -190,7 +191,7 @@ export class MemoryManager {
           projectId: archived.projectId,
           action: 'archive',
           actor: archived.author,
-        }).catch(err => console.error('Audit log failed:', err));
+        }).catch(err => logger.error({ err }, 'Audit log failed'));
         return true;
       }
       return false;
@@ -206,7 +207,7 @@ export class MemoryManager {
         projectId: existing?.projectId,
         action: 'delete',
         actor: existing?.author || 'system',
-      }).catch(err => console.error('Audit log failed:', err));
+      }).catch(err => logger.error({ err }, 'Audit log failed'));
       return true;
     }
     return false;
@@ -221,7 +222,7 @@ export class MemoryManager {
         projectId: updated.projectId,
         action: pinned ? 'pin' : 'unpin',
         actor: updated.author,
-      }).catch(err => console.error('Audit log failed:', err));
+      }).catch(err => logger.error({ err }, 'Audit log failed'));
       return updated;
     }
     return null;
@@ -363,7 +364,7 @@ export class MemoryManager {
   async autoArchiveOldEntries(days: number = 14): Promise<number> {
     const archived = await this.storage.archiveOldEntries(days);
     if (archived > 0) {
-      console.error(`Auto-archived ${archived} entries older than ${days} days`);
+      logger.info({ archived, days }, 'Auto-archived old entries');
     }
     return archived;
   }
@@ -374,18 +375,18 @@ export class MemoryManager {
     }
 
     this.autoArchiveOldEntries(days).catch(err =>
-      console.error('Initial auto-archive failed:', err)
+      logger.error({ err }, 'Initial auto-archive failed')
     );
 
     this.autoArchiveInterval = setInterval(async () => {
       try {
         await this.autoArchiveOldEntries(days);
       } catch (error) {
-        console.error('Auto archive failed:', error);
+        logger.error({ err: error }, 'Auto archive failed');
       }
     }, checkIntervalMs);
 
-    console.error(`Auto-archive enabled: entries older than ${days} days, check every ${checkIntervalMs / 1000 / 60 / 60}h`);
+    logger.info({ days, intervalHours: checkIntervalMs / 1000 / 60 / 60 }, 'Auto-archive enabled');
   }
 
   stopAutoArchive(): void {

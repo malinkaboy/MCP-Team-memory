@@ -6,6 +6,7 @@ import { PgStorage } from './pg-storage.js';
 import { DEFAULT_PROJECT_ID } from '../memory/types.js';
 import type { MemoryStore, MemoryEntry, LegacyMemoryEntry } from '../memory/types.js';
 import crypto from 'crypto';
+import logger from '../logger.js';
 
 export interface MigrationResult {
   migrated: number;
@@ -18,14 +19,14 @@ export async function migrateFromJson(
   storage: PgStorage
 ): Promise<MigrationResult> {
   if (!existsSync(jsonPath)) {
-    console.error(`Migration: JSON file not found at ${jsonPath}`);
+    logger.info({ jsonPath }, 'Migration: JSON file not found');
     return { migrated: 0, errors: 0, total: 0 };
   }
 
   // Skip migration if PostgreSQL already has data (prevents duplicate imports)
   const existingCount = await storage.count();
   if (existingCount > 0) {
-    console.error(`Migration: Skipped — PostgreSQL already has ${existingCount} entries`);
+    logger.info({ existingCount }, 'Migration: Skipped — PostgreSQL already has entries');
     return { migrated: 0, errors: 0, total: 0 };
   }
 
@@ -36,7 +37,7 @@ export async function migrateFromJson(
   let errors = 0;
   const total = store.entries.length;
 
-  console.error(`Migration: Found ${total} entries in ${jsonPath}`);
+  logger.info({ total, jsonPath }, 'Migration: Found entries in JSON file');
 
   for (const legacy of store.entries) {
     try {
@@ -61,18 +62,18 @@ export async function migrateFromJson(
       migrated++;
     } catch (err) {
       errors++;
-      console.error(`Migration: Failed to migrate entry "${legacy.title}":`, err);
+      logger.error({ title: legacy.title, err }, 'Migration: Failed to migrate entry');
     }
   }
 
-  console.error(`Migration complete: ${migrated} migrated, ${errors} errors out of ${total} total`);
+  logger.info({ migrated, errors, total }, 'Migration complete');
 
   // Rename the JSON file to prevent re-migration
   try {
     renameSync(jsonPath, `${jsonPath}.migrated`);
-    console.error(`Migration: Renamed ${jsonPath} → ${jsonPath}.migrated`);
+    logger.info({ jsonPath }, 'Migration: Renamed to .migrated');
   } catch {
-    console.error(`Migration: Could not rename ${jsonPath}`);
+    logger.warn({ jsonPath }, 'Migration: Could not rename file');
   }
 
   return { migrated, errors, total };

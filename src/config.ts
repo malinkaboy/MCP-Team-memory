@@ -9,6 +9,7 @@ export interface AppConfig {
   autoArchiveEnabled: boolean;
   autoArchiveDays: number;
   apiToken: string | undefined;
+  logLevel: string;
 }
 
 /** Parse integer with fallback to default on NaN */
@@ -25,5 +26,6 @@ export function loadConfig(): AppConfig {
     autoArchiveEnabled: process.env.MEMORY_AUTO_ARCHIVE !== 'false',
     autoArchiveDays: parseIntSafe(process.env.MEMORY_AUTO_ARCHIVE_DAYS || '14', 14),
     apiToken: process.env.MEMORY_API_TOKEN || undefined,
+    logLevel: process.env.LOG_LEVEL || 'info',
   };
 }

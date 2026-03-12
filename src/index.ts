@@ -8,8 +8,10 @@
  */
 
 import { loadConfig } from './config.js';
+import { createLogger } from './logger.js';
 
 const config = loadConfig();
+const logger = createLogger(config.logLevel);
 
 if (config.transport === 'http') {
   // HTTP mode — import and run app.ts
@@ -20,11 +22,7 @@ if (config.transport === 'http') {
   const { MemoryManager } = await import('./memory/manager.js');
   const { TeamMemoryMCPServer } = await import('./server.js');
 
-  console.error('='.repeat(50));
-  console.error('Team Memory MCP Server v2 (stdio mode)');
-  console.error('='.repeat(50));
-  console.error(`Database: ${config.databaseUrl.replace(/\/\/.*:.*@/, '//***:***@')}`);
-  console.error('='.repeat(50));
+  logger.info({ transport: 'stdio', database: config.databaseUrl.replace(/\/\/.*:.*@/, '//***:***@') }, 'Team Memory MCP Server v2 starting');
 
   try {
     const storage = new PgStorage(config.databaseUrl);
@@ -40,17 +38,17 @@ if (config.transport === 'http') {
 
     if (config.autoArchiveEnabled) {
       memoryManager.startAutoArchive(config.autoArchiveDays);
-      console.error(`Auto-archive: entries older than ${config.autoArchiveDays} days`);
+      logger.info({ days: config.autoArchiveDays }, 'Auto-archive enabled');
     }
 
-    console.error('MCP Server ready. Waiting for commands...');
+    logger.info('MCP Server ready. Waiting for commands...');
 
     process.on('SIGINT', async () => {
       await memoryManager.close();
       process.exit(0);
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.fatal({ err: error }, 'Failed to start server');
     process.exit(1);
   }
 }

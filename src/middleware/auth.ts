@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import logger from '../logger.js';
 
 /**
  * Creates Bearer token auth middleware.
@@ -9,7 +10,7 @@ import crypto from 'crypto';
 export function createAuthMiddleware(token: string | undefined) {
   const trimmedToken = token?.trim() || undefined;
   if (token !== undefined && !trimmedToken) {
-    console.error('WARNING: MEMORY_API_TOKEN is empty/whitespace — auth is disabled');
+    logger.warn('MEMORY_API_TOKEN is empty/whitespace — auth is disabled');
   }
 
   return (req: Request, res: Response, next: NextFunction): void => {

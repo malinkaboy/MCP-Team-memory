@@ -3,6 +3,7 @@ import type http from 'http';
 import crypto from 'crypto';
 import type { MemoryManager } from '../memory/manager.js';
 import type { WSEvent } from '../memory/types.js';
+import logger from '../logger.js';
 
 interface ConnectedClient {
   ws: WebSocket;
@@ -26,14 +27,14 @@ export class SyncWebSocketServer {
   /** Start WebSocket on a standalone port */
   start(port: number): void {
     this.wss = new WebSocketServer({ port });
-    console.error(`WebSocket server started on port ${port}`);
+    logger.info({ port }, 'WebSocket server started');
     this.setupConnectionHandler();
   }
 
   /** Attach WebSocket to an existing HTTP server (for unified mode) */
   attachToServer(server: http.Server): void {
     this.wss = new WebSocketServer({ server, path: '/ws' });
-    console.error('WebSocket attached to HTTP server at /ws');
+    logger.info('WebSocket attached to HTTP server at /ws');
     this.setupConnectionHandler();
   }
 
@@ -69,7 +70,7 @@ export class SyncWebSocketServer {
       };
 
       this.clients.set(clientId, client);
-      console.error(`Client connected: ${clientName} (${clientId})`);
+      logger.info({ clientName, clientId }, 'Client connected');
 
       this.sendToClient(ws, {
         type: 'agent:connected',
@@ -92,13 +93,13 @@ export class SyncWebSocketServer {
           const message = JSON.parse(data.toString());
           this.handleClientMessage(clientId, message);
         } catch (error) {
-          console.error('Invalid message from client:', error);
+          logger.warn({ err: error }, 'Invalid message from client');
         }
       });
 
       ws.on('close', () => {
         this.clients.delete(clientId);
-        console.error(`Client disconnected: ${clientName} (${clientId})`);
+        logger.info({ clientName, clientId }, 'Client disconnected');
         this.broadcast({
           type: 'agent:disconnected',
           payload: { clientId, clientName },
@@ -107,7 +108,7 @@ export class SyncWebSocketServer {
       });
 
       ws.on('error', (error) => {
-        console.error(`WebSocket error for ${clientName}:`, error);
+        logger.error({ clientName, err: error }, 'WebSocket error');
       });
     });
 
@@ -133,7 +134,7 @@ export class SyncWebSocketServer {
 
       case 'sync_request':
         this.handleSyncRequest(client, msg.payload as { since?: string })
-          .catch(err => console.error('Sync request error:', err));
+          .catch(err => logger.error({ err }, 'Sync request error'));
         break;
 
       case 'rename': {
@@ -150,7 +151,7 @@ export class SyncWebSocketServer {
       }
 
       default:
-        console.error(`Unknown message type from ${client.name}:`, msg.type);
+        logger.warn({ clientName: client.name, messageType: msg.type }, 'Unknown message type');
     }
   }
 
@@ -166,14 +167,14 @@ export class SyncWebSocketServer {
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error('Sync request failed:', error);
+      logger.error({ err: error }, 'Sync request failed');
     }
   }
 
   private sendToClient(ws: WebSocket, event: WSEvent): void {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(event), (err) => {
-        if (err) console.error('WebSocket send failed:', err);
+        if (err) logger.error({ err }, 'WebSocket send failed');
       });
     }
   }
@@ -183,7 +184,7 @@ export class SyncWebSocketServer {
     this.clients.forEach((client) => {
       if (client.ws.readyState === WebSocket.OPEN) {
         client.ws.send(message, (err) => {
-          if (err) console.error(`WebSocket broadcast failed for ${client.name}:`, err);
+          if (err) logger.error({ clientName: client.name, err }, 'WebSocket broadcast failed');
         });
       }
     });
@@ -194,7 +195,7 @@ export class SyncWebSocketServer {
     this.clients.forEach((client, id) => {
       if (id !== excludeId && client.ws.readyState === WebSocket.OPEN) {
         client.ws.send(message, (err) => {
-          if (err) console.error(`WebSocket broadcast failed for ${client.name}:`, err);
+          if (err) logger.error({ clientName: client.name, err }, 'WebSocket broadcast failed');
         });
       }
     });
@@ -226,7 +227,7 @@ export class SyncWebSocketServer {
       this.clients.clear();
       this.wss.close();
       this.wss = null;
-      console.error('WebSocket server stopped');
+      logger.info('WebSocket server stopped');
     }
   }
 }

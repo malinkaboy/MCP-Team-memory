@@ -6,6 +6,7 @@ import type { SyncWebSocketServer } from '../sync/websocket.js';
 import type { Category, Priority, Status } from '../memory/types.js';
 import { ReadParamsSchema, WriteParamsSchema, UpdateParamsSchema, formatZodError } from '../memory/validation.js';
 import { exportEntries, type ExportFormat } from '../export/exporter.js';
+import logger from '../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,7 +40,7 @@ export class WebServer {
       res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
     this.app.listen(port, '0.0.0.0', () => {
-      console.error(`Web UI available at http://localhost:${port}`);
+      logger.info({ port }, 'Web UI available');
     });
   }
 
@@ -51,7 +52,7 @@ export class WebServer {
         const projects = await this.memoryManager.listProjects();
         res.json({ success: true, projects });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -66,7 +67,7 @@ export class WebServer {
         const project = await this.memoryManager.createProject({ name, description, domains });
         res.json({ success: true, project });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -82,7 +83,7 @@ export class WebServer {
         }
         res.json({ success: true, project });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -97,7 +98,7 @@ export class WebServer {
         }
         res.json({ success: true });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -132,7 +133,7 @@ export class WebServer {
 
         res.json({ success: true, entries });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -148,7 +149,7 @@ export class WebServer {
 
         res.json({ success: true, stats });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -158,7 +159,7 @@ export class WebServer {
         const agents = this.wsServer?.getConnectedClientsInfo() || [];
         res.json({ success: true, agents });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -175,7 +176,7 @@ export class WebServer {
         const entry = await this.memoryManager.write({ ...writeData, projectId: project_id });
         res.json({ success: true, entry });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -196,7 +197,7 @@ export class WebServer {
 
         res.json({ success: true, entry: updated });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -214,7 +215,7 @@ export class WebServer {
 
         res.json({ success: true, archived: archive });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -232,7 +233,7 @@ export class WebServer {
 
         res.json({ success: true, entry: updated });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -249,7 +250,7 @@ export class WebServer {
         const entries = await auditLogger.getByEntry(req.params.entryId);
         res.json({ success: true, audit: entries });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -270,7 +271,7 @@ export class WebServer {
 
         res.json({ success: true, audit: entries });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -287,7 +288,7 @@ export class WebServer {
         const versions = await vm.getVersions(req.params.id);
         res.json({ success: true, versions });
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });
@@ -323,7 +324,7 @@ export class WebServer {
 
         res.send(exported);
       } catch (error) {
-        console.error('API error:', error);
+        logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });
       }
     });

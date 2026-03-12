@@ -16,6 +16,7 @@ import { SyncWebSocketServer } from './sync/websocket.js';
 import { migrateFromJson } from './storage/migration.js';
 import { loadConfig } from './config.js';
 import { createAuthMiddleware } from './middleware/auth.js';
+import { createLogger } from './logger.js';
 import { createRateLimiter } from './middleware/rate-limit.js';
 import { AuditLogger } from './storage/audit.js';
 import { VersionManager } from './storage/versioning.js';
@@ -25,13 +26,9 @@ const __dirname = path.dirname(__filename);
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const logger = createLogger(config.logLevel);
 
-  console.error('='.repeat(50));
-  console.error('Team Memory MCP Server v2 (HTTP mode)');
-  console.error('='.repeat(50));
-  console.error(`Database: ${config.databaseUrl.replace(/\/\/.*:.*@/, '//***:***@')}`);
-  console.error(`Port: ${config.port}`);
-  console.error('='.repeat(50));
+  logger.info({ transport: 'http', database: config.databaseUrl.replace(/\/\/.*:.*@/, '//***:***@'), port: config.port }, 'Team Memory MCP Server v2 starting');
 
   // Initialize storage
   const storage = new PgStorage(config.databaseUrl);
@@ -43,7 +40,7 @@ async function main(): Promise<void> {
   // Auto-migrate from JSON if needed
   const jsonPath = path.join(__dirname, '..', 'data', 'memory.json');
   if (existsSync(jsonPath)) {
-    console.error('Found legacy memory.json, starting migration...');
+    logger.info('Found legacy memory.json, starting migration...');
     await migrateFromJson(jsonPath, storage);
   }
 
@@ -54,7 +51,7 @@ async function main(): Promise<void> {
   // CORS — allow configurable origins
   const allowedOrigin = process.env.MEMORY_CORS_ORIGIN || '*';
   if (allowedOrigin === '*') {
-    console.error('WARNING: CORS origin is set to "*" — all origins allowed. Set MEMORY_CORS_ORIGIN for production.');
+    logger.warn('CORS origin is set to "*" — all origins allowed. Set MEMORY_CORS_ORIGIN for production.');
   }
   app.use((_req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
@@ -102,17 +99,12 @@ async function main(): Promise<void> {
 
   // Start listening
   server.listen(config.port, '0.0.0.0', () => {
-    console.error(`\nServer running on http://0.0.0.0:${config.port}`);
-    console.error(`  Web UI:    http://localhost:${config.port}`);
-    console.error(`  MCP:       http://localhost:${config.port}/mcp`);
-    console.error(`  REST API:  http://localhost:${config.port}/api/`);
-    console.error(`  WebSocket: ws://localhost:${config.port}/ws`);
-    console.error('\nReady for connections.');
+    logger.info({ port: config.port, urls: { webUI: `http://localhost:${config.port}`, mcp: `http://localhost:${config.port}/mcp`, api: `http://localhost:${config.port}/api/`, ws: `ws://localhost:${config.port}/ws` } }, 'Server ready for connections');
   });
 
   // Graceful shutdown
   const shutdown = async (): Promise<void> => {
-    console.error('\nShutting down...');
+    logger.info('Shutting down...');
     wsServer.stop();
     await memoryManager.close();
     server.close();
@@ -124,6 +116,7 @@ async function main(): Promise<void> {
 }
 
 main().catch(err => {
-  console.error('Fatal error:', err);
+  const logger = createLogger();
+  logger.fatal({ err }, 'Fatal error');
   process.exit(1);
 });

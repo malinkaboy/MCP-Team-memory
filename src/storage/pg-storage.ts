@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { DEFAULT_PROJECT_ID } from '../memory/types.js';
 import type { MemoryEntry, Project, ReadParams } from '../memory/types.js';
 import { toISOString } from './utils.js';
+import logger from '../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,7 +59,7 @@ export class PgStorage {
 
     // Prevent unhandled error crash when idle clients lose connection
     this.pool.on('error', (err) => {
-      console.error('PostgreSQL pool error (idle client):', err.message);
+      logger.error({ err }, 'PostgreSQL pool error (idle client)');
     });
   }
 
@@ -78,7 +79,7 @@ export class PgStorage {
     // Ensure default project exists
     await this.ensureDefaultProject();
 
-    console.error('PgStorage initialized');
+    logger.info('PgStorage initialized');
   }
 
   getPool(): pg.Pool {

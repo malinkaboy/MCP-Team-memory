@@ -9,6 +9,7 @@ import {
   type Resource
 } from '@modelcontextprotocol/sdk/types.js';
 import { MemoryManager } from './memory/manager.js';
+import logger from './logger.js';
 import type {
   Category,
   Priority,
@@ -499,7 +500,7 @@ export class TeamMemoryMCPServer {
   async start(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.error('Team Memory MCP Server started (stdio)');
+    logger.info('Team Memory MCP Server started (stdio)');
   }
 
   getMemoryManager(): MemoryManager {

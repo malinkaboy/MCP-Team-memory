@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { Express, Request, Response } from 'express';
+import logger from '../logger.js';
 
 interface SessionEntry {
   transport: StreamableHTTPServerTransport;
@@ -22,7 +23,7 @@ setInterval(() => {
     if (now - session.lastActivity > SESSION_TTL_MS) {
       try { session.transport.close?.(); } catch { /* ignore close errors */ }
       transports.delete(id);
-      console.error(`MCP session expired (TTL): ${id}`);
+      logger.info({ sessionId: id }, 'MCP session expired (TTL)');
     }
   }
 }, CLEANUP_INTERVAL_MS).unref();
@@ -44,14 +45,14 @@ export function mountMcpTransport(app: Express, createMcpServer: () => Server): 
       sessionIdGenerator: () => crypto.randomUUID(),
       onsessioninitialized: (id: string) => {
         transports.set(id, { transport, lastActivity: Date.now() });
-        console.error(`MCP session created: ${id}`);
+        logger.info({ sessionId: id }, 'MCP session created');
       },
     });
 
     transport.onclose = () => {
       if (transport.sessionId) {
         transports.delete(transport.sessionId);
-        console.error(`MCP session closed: ${transport.sessionId}`);
+        logger.info({ sessionId: transport.sessionId }, 'MCP session closed');
       }
     };
 
