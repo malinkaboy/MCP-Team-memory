@@ -16,6 +16,7 @@ import { SyncWebSocketServer } from './sync/websocket.js';
 import { migrateFromJson } from './storage/migration.js';
 import { loadConfig } from './config.js';
 import { createAuthMiddleware } from './middleware/auth.js';
+import { createHealthHandler } from './health.js';
 import { createLogger } from './logger.js';
 import { createRateLimiter } from './middleware/rate-limit.js';
 import { AuditLogger } from './storage/audit.js';
@@ -63,6 +64,9 @@ async function main(): Promise<void> {
     }
     next();
   });
+
+  // Health check — no auth required
+  app.get('/health', createHealthHandler(storage.getPool()));
 
   // Auth middleware (optional — set MEMORY_API_TOKEN to enable)
   app.use(createAuthMiddleware(config.apiToken));
