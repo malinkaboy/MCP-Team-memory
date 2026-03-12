@@ -161,6 +161,28 @@ describe('MemoryManager', () => {
     });
   });
 
+  describe('getOverview', () => {
+    it('does not add ellipsis when content fits within limit', async () => {
+      const shortContent = 'Short content';
+      storage.getAll.mockResolvedValueOnce([
+        { ...storage._mockEntry, category: 'architecture', content: shortContent },
+      ]);
+      const overview = await manager.getOverview();
+      expect(overview).toContain(shortContent);
+      expect(overview).not.toContain('...');
+    });
+
+    it('adds ellipsis when content exceeds truncation limit', async () => {
+      const longContent = 'A'.repeat(150);
+      storage.getAll.mockResolvedValueOnce([
+        { ...storage._mockEntry, category: 'architecture', content: longContent },
+      ]);
+      const overview = await manager.getOverview();
+      expect(overview).toContain('...');
+      expect(overview).toContain(longContent.substring(0, 100));
+    });
+  });
+
   describe('subscribe/unsubscribe', () => {
     it('stops receiving events after unsubscribe', async () => {
       const listener = vi.fn();
