@@ -216,19 +216,46 @@ export class PgStorage {
     return rows.length > 0 ? rowToEntry(rows[0]) : undefined;
   }
 
-  async search(projectId: string, query: string, limit = 50): Promise<MemoryEntry[]> {
-    // Use plainto_tsquery for safe query parsing + ILIKE fallback for partial matches
+  async search(projectId: string, query: string, filters?: {
+    category?: string;
+    domain?: string;
+    status?: string;
+    tags?: string[];
+    limit?: number;
+  }): Promise<MemoryEntry[]> {
+    const conditions: string[] = ['project_id = $1'];
+    const values: unknown[] = [projectId];
+    let paramIdx = 2;
+
+    // Full-text search + ILIKE fallback
+    conditions.push(`(search_vector @@ plainto_tsquery('simple', $${paramIdx}) OR title ILIKE $${paramIdx + 1} OR content ILIKE $${paramIdx + 1})`);
+    values.push(query, `%${escapeIlike(query)}%`);
+    paramIdx += 2;
+
+    if (filters?.category && filters.category !== 'all') {
+      conditions.push(`category = $${paramIdx++}`);
+      values.push(filters.category);
+    }
+    if (filters?.domain) {
+      conditions.push(`domain = $${paramIdx++}`);
+      values.push(filters.domain);
+    }
+    if (filters?.status) {
+      conditions.push(`status = $${paramIdx++}`);
+      values.push(filters.status);
+    }
+    if (filters?.tags && filters.tags.length > 0) {
+      conditions.push(`tags && $${paramIdx++}`);
+      values.push(filters.tags);
+    }
+
+    const limit = filters?.limit || 50;
+    values.push(limit);
+
     const { rows } = await this.pool.query(
-      `SELECT * FROM entries
-       WHERE project_id = $1
-         AND (
-           search_vector @@ plainto_tsquery('simple', $2)
-           OR title ILIKE $3
-           OR content ILIKE $3
-         )
-       ORDER BY updated_at DESC
-       LIMIT $4`,
-      [projectId, query, `%${escapeIlike(query)}%`, limit]
+      `SELECT * FROM entries WHERE ${conditions.join(' AND ')}
+       ORDER BY updated_at DESC LIMIT $${paramIdx}`,
+      values
     );
     return rows.map(rowToEntry);
   }

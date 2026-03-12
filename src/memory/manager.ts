@@ -92,7 +92,13 @@ export class MemoryManager {
     const { category = 'all', domain, search, limit = 50, status, tags } = params;
 
     if (search) {
-      return this.storage.search(projectId, search, limit);
+      return this.storage.search(projectId, search, {
+        category: category === 'all' ? undefined : category,
+        domain,
+        status,
+        tags,
+        limit,
+      });
     }
 
     return this.storage.getAll(projectId, {

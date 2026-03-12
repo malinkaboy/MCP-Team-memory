@@ -79,7 +79,35 @@ describe('MemoryManager', () => {
       expect(storage.search).toHaveBeenCalledWith(
         '00000000-0000-0000-0000-000000000000',
         'test',
-        50,
+        {
+          category: undefined,
+          domain: undefined,
+          status: undefined,
+          tags: undefined,
+          limit: 50,
+        },
+      );
+    });
+
+    it('passes filters to storage.search when search param provided with filters', async () => {
+      await manager.read({
+        search: 'test',
+        category: 'issues',
+        status: 'active',
+        domain: 'backend',
+        tags: ['bug'],
+        limit: 10,
+      });
+      expect(storage.search).toHaveBeenCalledWith(
+        '00000000-0000-0000-0000-000000000000',
+        'test',
+        {
+          category: 'issues',
+          domain: 'backend',
+          status: 'active',
+          tags: ['bug'],
+          limit: 10,
+        },
       );
     });
   });
