@@ -275,7 +275,7 @@ export class MemoryManager {
     if (byCategory.architecture.length > 0) {
       overview += `## 🏗️ Архитектура (${byCategory.architecture.length})\n`;
       byCategory.architecture.slice(0, 5).forEach(e => {
-        overview += `- **${e.title}**${e.domain ? ` [${e.domain}]` : ''}: ${e.content.substring(0, 100)}...\n`;
+        overview += `- **${e.title}**${e.domain ? ` [${e.domain}]` : ''}: ${e.content.length > 100 ? e.content.substring(0, 100) + '...' : e.content}\n`;
       });
       overview += '\n';
     }
@@ -294,7 +294,7 @@ export class MemoryManager {
     if (byCategory.issues.length > 0) {
       overview += `## 🐛 Известные проблемы (${byCategory.issues.length})\n`;
       byCategory.issues.slice(0, 5).forEach(e => {
-        overview += `- **${e.title}**: ${e.content.substring(0, 80)}...\n`;
+        overview += `- **${e.title}**: ${e.content.length > 80 ? e.content.substring(0, 80) + '...' : e.content}\n`;
       });
       overview += '\n';
     }
