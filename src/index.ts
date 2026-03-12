@@ -43,10 +43,16 @@ if (config.transport === 'http') {
 
     logger.info('MCP Server ready. Waiting for commands...');
 
-    process.on('SIGINT', async () => {
+    let isShuttingDown = false;
+    const shutdownStdio = async (signal: string) => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+      logger.info({ signal }, 'Shutting down stdio server');
       await memoryManager.close();
       process.exit(0);
-    });
+    };
+    process.on('SIGINT', () => shutdownStdio('SIGINT'));
+    process.on('SIGTERM', () => shutdownStdio('SIGTERM'));
   } catch (error) {
     logger.fatal({ err: error }, 'Failed to start server');
     process.exit(1);

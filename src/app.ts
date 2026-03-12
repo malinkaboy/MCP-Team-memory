@@ -107,16 +107,41 @@ async function main(): Promise<void> {
   });
 
   // Graceful shutdown
-  const shutdown = async (): Promise<void> => {
-    logger.info('Shutting down...');
-    wsServer.stop();
-    await memoryManager.close();
+  let isShuttingDown = false;
+
+  const shutdown = async (signal: string): Promise<void> => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    logger.info({ signal }, 'Graceful shutdown initiated');
+
+    // 1. Stop accepting new HTTP connections
     server.close();
+
+    // 2. Close WebSocket connections
+    wsServer.stop();
+
+    // 3. Hard-kill safety net — if graceful shutdown hangs, force exit after 10s
+    setTimeout(() => {
+      logger.error('Shutdown timed out, forcing exit');
+      process.exit(1);
+    }, 10_000).unref();
+
+    // 4. Wait briefly for in-flight requests to complete
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 5. Force-close remaining keep-alive connections
+    server.closeAllConnections();
+
+    // 6. Close database pool (also stops auto-archive timer)
+    await memoryManager.close();
+
+    logger.info('Shutdown complete');
     process.exit(0);
   };
 
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 main().catch(err => {
