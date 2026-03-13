@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { Migrator } from '../storage/migrator.js';
 
 function createMockPool() {
@@ -48,14 +51,20 @@ function createMockPool() {
 
 describe('Migrator', () => {
   let pool: ReturnType<typeof createMockPool>;
+  let tmpDir: string;
 
   beforeEach(() => {
     pool = createMockPool();
+    tmpDir = mkdtempSync(join(tmpdir(), 'migrator-test-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('creates schema_migrations table on run', async () => {
-    const migrator = new Migrator(pool as any, 'nonexistent-dir');
-    try { await migrator.run(); } catch { /* expected: dir not found */ }
+    const migrator = new Migrator(pool as any, tmpDir);
+    await migrator.run();
 
     const calls = pool._getCalls();
     expect(calls.some(c => c.text.includes('CREATE TABLE IF NOT EXISTS schema_migrations'))).toBe(true);
@@ -65,8 +74,8 @@ describe('Migrator', () => {
     pool._setResult('schema_meta_exists', { rows: [{ '?column?': 1 }] });
     pool._setResult('migration_1_exists', { rows: [] });
 
-    const migrator = new Migrator(pool as any, 'nonexistent-dir');
-    try { await migrator.run(); } catch { /* expected: dir not found */ }
+    const migrator = new Migrator(pool as any, tmpDir);
+    await migrator.run();
 
     const calls = pool._getCalls();
     expect(calls.some(c =>
@@ -80,8 +89,8 @@ describe('Migrator', () => {
     pool._setResult('schema_meta_exists', { rows: [{ '?column?': 1 }] });
     pool._setResult('migration_1_exists', { rows: [{ '?column?': 1 }] });
 
-    const migrator = new Migrator(pool as any, 'nonexistent-dir');
-    try { await migrator.run(); } catch { /* expected */ }
+    const migrator = new Migrator(pool as any, tmpDir);
+    await migrator.run();
 
     const calls = pool._getCalls();
     const bootstrapInserts = calls.filter(c =>
@@ -94,8 +103,8 @@ describe('Migrator', () => {
   it('skips bootstrap for fresh DB (no schema_meta)', async () => {
     pool._setResult('schema_meta_exists', { rows: [] });
 
-    const migrator = new Migrator(pool as any, 'nonexistent-dir');
-    try { await migrator.run(); } catch { /* expected */ }
+    const migrator = new Migrator(pool as any, tmpDir);
+    await migrator.run();
 
     const calls = pool._getCalls();
     const bootstrapInserts = calls.filter(c =>
@@ -106,29 +115,20 @@ describe('Migrator', () => {
   });
 
   it('reads and executes pending migration SQL files from directory', async () => {
-    const os = await import('os');
     const fs = await import('fs');
-    const path = await import('path');
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrator-test-'));
-    fs.writeFileSync(path.join(tmpDir, '002-add-column.sql'), 'ALTER TABLE entries ADD COLUMN IF NOT EXISTS test_col TEXT;');
+    fs.writeFileSync(join(tmpDir, '002-add-column.sql'), 'ALTER TABLE entries ADD COLUMN IF NOT EXISTS test_col TEXT;');
 
     pool._setResult('applied_versions', { rows: [{ version: 1 }] });
 
     const migrator = new Migrator(pool as any, tmpDir);
     await migrator.run();
 
-    const calls = pool._getCalls();
     expect(pool.connect).toHaveBeenCalled();
-
-    fs.rmSync(tmpDir, { recursive: true });
   });
 
   it('skips already-applied migrations', async () => {
-    const os = await import('os');
     const fs = await import('fs');
-    const path = await import('path');
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrator-test-'));
-    fs.writeFileSync(path.join(tmpDir, '001-initial.sql'), 'SELECT 1;');
+    fs.writeFileSync(join(tmpDir, '001-initial.sql'), 'SELECT 1;');
 
     pool._setResult('applied_versions', { rows: [{ version: 1 }] });
 
@@ -136,7 +136,5 @@ describe('Migrator', () => {
     await migrator.run();
 
     expect(pool.connect).not.toHaveBeenCalled();
-
-    fs.rmSync(tmpDir, { recursive: true });
   });
 });

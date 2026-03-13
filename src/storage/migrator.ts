@@ -87,7 +87,7 @@ export class Migrator {
 
     logger.info('Bootstrapping: existing v2 DB detected, marking migration 001 as applied');
     await this.pool.query(
-      `INSERT INTO schema_migrations (version, name) VALUES ($1, $2)`,
+      `INSERT INTO schema_migrations (version, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
       [1, 'initial-schema']
     );
   }

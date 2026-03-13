@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import type pg from 'pg';
+import logger from './logger.js';
 
 export function createHealthHandler(pool: pg.Pool) {
   return async (_req: Request, res: Response): Promise<void> => {
@@ -22,6 +23,7 @@ export function createHealthHandler(pool: pg.Pool) {
         },
       });
     } catch (err) {
+      logger.warn({ err }, 'Health check: database unreachable');
       const mem = process.memoryUsage();
       res.status(503).json({
         status: 'unhealthy',
