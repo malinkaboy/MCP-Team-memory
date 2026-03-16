@@ -55,6 +55,8 @@ export interface MemoryEntry {
   updatedAt: string;
   relatedIds: string[];
   currentVersion?: number; // Текущая версия записи (optimistic locking)
+  readCount?: number;      // Количество чтений (для decay scoring)
+  lastReadAt?: string;     // Последнее чтение (ISO string)
 }
 
 // Хранилище памяти (legacy, для миграции)

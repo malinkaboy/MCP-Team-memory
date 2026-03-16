@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { Migrator } from './migrator.js';
 import { DEFAULT_PROJECT_ID } from '../memory/types.js';
 import type { MemoryEntry, Project, ReadParams, ConflictError } from '../memory/types.js';
+import { buildArchiveByScoreQuery } from '../memory/decay.js';
 import { toISOString } from './utils.js';
 import logger from '../logger.js';
 
@@ -33,6 +34,8 @@ function rowToEntry(row: Record<string, unknown>): MemoryEntry {
     createdAt: toISOString(row.created_at),
     updatedAt: toISOString(row.updated_at),
     relatedIds: (row.related_ids as string[]) || [],
+    readCount: (row.read_count as number) ?? 0,
+    lastReadAt: row.last_read_at ? toISOString(row.last_read_at) : undefined,
   };
 }
 
@@ -209,6 +212,7 @@ export class PgStorage {
     if (rows.length === 0) return undefined;
     const entry = rowToEntry(rows[0]);
     const [withVersion] = await this.attachVersions([entry]);
+    this.trackReads([entry.id]);
     return withVersion;
   }
 
@@ -254,6 +258,7 @@ export class PgStorage {
       values
     );
     const entries = rows.map(rowToEntry);
+    this.trackReads(entries.map(e => e.id));
     return this.attachVersions(entries);
   }
 
@@ -488,6 +493,26 @@ export class PgStorage {
       [projectId]
     );
     return rows[0]?.last ? toISOString(rows[0].last) : new Date().toISOString();
+  }
+
+  /** Fire-and-forget: increment read_count for returned entry IDs */
+  private trackReads(ids: string[]): void {
+    if (ids.length === 0) return;
+    this.pool.query(
+      `UPDATE entries SET read_count = read_count + 1, last_read_at = NOW() WHERE id = ANY($1)`,
+      [ids]
+    ).catch(err => logger.error({ err }, 'Read tracking failed'));
+  }
+
+  /** Archive entries whose importance score is below the threshold */
+  async archiveByScore(
+    threshold: number,
+    decayDays: number,
+    weights: [number, number, number, number]
+  ): Promise<number> {
+    const { sql, params } = buildArchiveByScoreQuery(threshold, decayDays, weights);
+    const result = await this.pool.query(sql, params);
+    return result.rowCount ?? 0;
   }
 
   /** Attach currentVersion from entry_versions to entries */

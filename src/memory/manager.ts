@@ -381,18 +381,38 @@ export class MemoryManager {
     return archived;
   }
 
-  startAutoArchive(days: number = 14, checkIntervalMs: number = 24 * 60 * 60 * 1000): void {
+  async autoArchiveByScore(
+    threshold: number,
+    decayDays: number,
+    weights: [number, number, number, number]
+  ): Promise<number> {
+    const archived = await this.storage.archiveByScore(threshold, decayDays, weights);
+    if (archived > 0) {
+      logger.info({ archived, threshold, decayDays }, 'Auto-archived entries by score');
+    }
+    return archived;
+  }
+
+  startAutoArchive(
+    days: number = 14,
+    checkIntervalMs: number = 24 * 60 * 60 * 1000,
+    decayConfig?: { threshold: number; decayDays: number; weights: [number, number, number, number] }
+  ): void {
     if (this.autoArchiveInterval) {
       clearInterval(this.autoArchiveInterval);
     }
 
-    this.autoArchiveOldEntries(days).catch(err =>
+    const archiveTask = decayConfig
+      ? () => this.autoArchiveByScore(decayConfig.threshold, decayConfig.decayDays, decayConfig.weights)
+      : () => this.autoArchiveOldEntries(days);
+
+    archiveTask().catch(err =>
       logger.error({ err }, 'Initial auto-archive failed')
     );
 
     this.autoArchiveInterval = setInterval(async () => {
       try {
-        await this.autoArchiveOldEntries(days);
+        await archiveTask();
       } catch (error) {
         logger.error({ err: error }, 'Auto archive failed');
       }

@@ -98,7 +98,10 @@ async function main(): Promise<void> {
 
   // Auto-archive
   if (config.autoArchiveEnabled) {
-    memoryManager.startAutoArchive(config.autoArchiveDays);
+    const decayConfig = config.decayThreshold !== undefined
+      ? { threshold: config.decayThreshold, decayDays: config.decayDays, weights: config.decayWeights }
+      : undefined;
+    memoryManager.startAutoArchive(config.autoArchiveDays, undefined, decayConfig);
   }
 
   // Start listening

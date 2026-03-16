@@ -37,8 +37,11 @@ if (config.transport === 'http') {
     await mcpServer.start();
 
     if (config.autoArchiveEnabled) {
-      memoryManager.startAutoArchive(config.autoArchiveDays);
-      logger.info({ days: config.autoArchiveDays }, 'Auto-archive enabled');
+      const decayConfig = config.decayThreshold !== undefined
+        ? { threshold: config.decayThreshold, decayDays: config.decayDays, weights: config.decayWeights }
+        : undefined;
+      memoryManager.startAutoArchive(config.autoArchiveDays, undefined, decayConfig);
+      logger.info({ days: config.autoArchiveDays, decay: !!decayConfig }, 'Auto-archive enabled');
     }
 
     logger.info('MCP Server ready. Waiting for commands...');
