@@ -36,6 +36,7 @@ export const WriteParamsSchema = z.object({
 
 export const UpdateParamsSchema = z.object({
   id: UuidSchema,
+  expected_version: z.number().int().min(0).optional(),
   title: z.string().min(1).max(500).optional(),
   content: z.string().min(1).max(50000).optional(),
   domain: z.string().max(100).nullable().optional(),

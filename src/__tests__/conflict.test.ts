@@ -77,6 +77,8 @@ describe('PgStorage.update with expectedVersion', () => {
     });
     // COMMIT
     pool._client.query.mockResolvedValueOnce({ rows: [] });
+    // attachVersions: SELECT entry_id, MAX(version) FROM entry_versions
+    pool.query.mockResolvedValueOnce({ rows: [{ entry_id: 'test-id', max_version: 6 }] });
 
     const result = await storage.update('test-id', { title: 'Updated' }, 5);
     expect(result).toBeDefined();
@@ -109,11 +111,14 @@ describe('PgStorage.update with expectedVersion', () => {
   it('works without expectedVersion (backward compat)', async () => {
     const pool = createTransactionMockPool();
     // Regular pool.query (not transactional) for non-versioned update
-    pool.query.mockResolvedValueOnce({
-      rows: [{ id: 'test-id', project_id: 'proj', title: 'Updated', content: 'C', category: 'tasks',
-               domain: null, author: 'a', tags: [], priority: 'medium', status: 'active',
-               pinned: false, related_ids: [], created_at: new Date(), updated_at: new Date() }]
-    });
+    pool.query
+      .mockResolvedValueOnce({
+        rows: [{ id: 'test-id', project_id: 'proj', title: 'Updated', content: 'C', category: 'tasks',
+                 domain: null, author: 'a', tags: [], priority: 'medium', status: 'active',
+                 pinned: false, related_ids: [], created_at: new Date(), updated_at: new Date() }]
+      })
+      // attachVersions: SELECT entry_id, MAX(version) FROM entry_versions
+      .mockResolvedValueOnce({ rows: [] });
 
     const storage = PgStorage.__createForTest(pool as any);
     const result = await storage.update('test-id', { title: 'Updated' });

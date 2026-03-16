@@ -18,7 +18,9 @@ import type {
   WriteParams,
   UpdateParams,
   DeleteParams,
-  SyncParams
+  SyncParams,
+  ConflictError,
+  MemoryEntry
 } from './memory/types.js';
 import {
   ReadParamsSchema,
@@ -106,6 +108,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
           type: 'object',
           properties: {
             id: { type: 'string', description: 'ID записи для обновления' },
+            expected_version: { type: 'number', description: 'Ожидаемая версия для optimistic locking. Если текущая версия не совпадает, вернётся ошибка конфликта.' },
             title: { type: 'string', description: 'Новый заголовок' },
             content: { type: 'string', description: 'Новое содержимое' },
             domain: { type: 'string', description: 'Новый домен' },
@@ -283,14 +286,26 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
           if (!parsed.success) {
             return { content: [{ type: 'text', text: `❌ Ошибка валидации: ${formatZodError(parsed.error)}` }], isError: true };
           }
-          const params = parsed.data;
-          const updateResult = await memoryManager.update(params);
-          if (!updateResult) return { content: [{ type: 'text', text: `❌ Запись с ID "${params.id}" не найдена.` }] };
-          if ('conflict' in updateResult) {
-            return { content: [{ type: 'text', text: `⚠️ Конфликт версий!\n\n${updateResult.message}\n\n**Текущая версия**: ${updateResult.currentVersion}` }], isError: true };
+          const { expected_version, ...rest } = parsed.data;
+          const params: UpdateParams = { ...rest, expectedVersion: expected_version };
+          const result = await memoryManager.update(params);
+
+          // Check for conflict
+          if (result && 'conflict' in result) {
+            const conflict = result as ConflictError;
+            return {
+              content: [{
+                type: 'text',
+                text: `⚠️ Конфликт версий!\n\n${conflict.message}\n\n**Текущая версия**: ${conflict.currentVersion}\n**Текущий заголовок**: ${conflict.currentEntry.title}\n\nПрочитайте запись заново и повторите обновление с актуальной версией.`
+              }],
+              isError: true,
+            };
           }
-          const updated = updateResult;
-          return { content: [{ type: 'text', text: `✅ Запись обновлена!\n\n**ID**: ${updated.id}\n**Заголовок**: ${updated.title}\n**Статус**: ${updated.status}` }] };
+
+          if (!result) return { content: [{ type: 'text', text: `❌ Запись с ID "${parsed.data.id}" не найдена.` }] };
+          const entry = result as MemoryEntry;
+          const versionInfo = entry.currentVersion !== undefined ? `\n**Версия**: ${entry.currentVersion}` : '';
+          return { content: [{ type: 'text', text: `✅ Запись обновлена!\n\n**ID**: ${entry.id}\n**Заголовок**: ${entry.title}\n**Статус**: ${entry.status}${versionInfo}` }] };
         }
 
         case 'memory_delete': {

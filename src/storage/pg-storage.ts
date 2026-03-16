@@ -200,12 +200,16 @@ export class PgStorage {
        ORDER BY updated_at DESC LIMIT $${paramIdx}`,
       values
     );
-    return rows.map(rowToEntry);
+    const allEntries = rows.map(rowToEntry);
+    return this.attachVersions(allEntries);
   }
 
   async getById(id: string): Promise<MemoryEntry | undefined> {
     const { rows } = await this.pool.query('SELECT * FROM entries WHERE id = $1', [id]);
-    return rows.length > 0 ? rowToEntry(rows[0]) : undefined;
+    if (rows.length === 0) return undefined;
+    const entry = rowToEntry(rows[0]);
+    const [withVersion] = await this.attachVersions([entry]);
+    return withVersion;
   }
 
   async search(projectId: string, query: string, filters?: {
@@ -249,7 +253,8 @@ export class PgStorage {
        ORDER BY updated_at DESC LIMIT $${paramIdx}`,
       values
     );
-    return rows.map(rowToEntry);
+    const entries = rows.map(rowToEntry);
+    return this.attachVersions(entries);
   }
 
   async add(entry: MemoryEntry): Promise<MemoryEntry> {
@@ -357,7 +362,10 @@ export class PgStorage {
           values
         );
         await client.query('COMMIT');
-        return rows.length > 0 ? rowToEntry(rows[0]) : undefined;
+        if (rows.length === 0) return undefined;
+        const entry = rowToEntry(rows[0]);
+        const [withVersion] = await this.attachVersions([entry]);
+        return withVersion;
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;
@@ -372,7 +380,10 @@ export class PgStorage {
       `UPDATE entries SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
       values
     );
-    return rows.length > 0 ? rowToEntry(rows[0]) : undefined;
+    if (rows.length === 0) return undefined;
+    const entry = rowToEntry(rows[0]);
+    const [withVersion] = await this.attachVersions([entry]);
+    return withVersion;
   }
 
   async delete(id: string): Promise<boolean> {
@@ -477,6 +488,18 @@ export class PgStorage {
       [projectId]
     );
     return rows[0]?.last ? toISOString(rows[0].last) : new Date().toISOString();
+  }
+
+  /** Attach currentVersion from entry_versions to entries */
+  private async attachVersions(entries: MemoryEntry[]): Promise<MemoryEntry[]> {
+    if (entries.length === 0) return entries;
+    const ids = entries.map(e => e.id);
+    const { rows } = await this.pool.query(
+      `SELECT entry_id, MAX(version) as max_version FROM entry_versions WHERE entry_id = ANY($1) GROUP BY entry_id`,
+      [ids]
+    );
+    const versionMap = new Map(rows.map((r: any) => [r.entry_id, r.max_version]));
+    return entries.map(e => ({ ...e, currentVersion: versionMap.get(e.id) ?? undefined }));
   }
 
   /** @internal Test-only factory that injects a mock pool */
