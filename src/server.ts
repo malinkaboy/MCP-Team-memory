@@ -284,8 +284,12 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
             return { content: [{ type: 'text', text: `❌ Ошибка валидации: ${formatZodError(parsed.error)}` }], isError: true };
           }
           const params = parsed.data;
-          const updated = await memoryManager.update(params);
-          if (!updated) return { content: [{ type: 'text', text: `❌ Запись с ID "${params.id}" не найдена.` }] };
+          const updateResult = await memoryManager.update(params);
+          if (!updateResult) return { content: [{ type: 'text', text: `❌ Запись с ID "${params.id}" не найдена.` }] };
+          if ('conflict' in updateResult) {
+            return { content: [{ type: 'text', text: `⚠️ Конфликт версий!\n\n${updateResult.message}\n\n**Текущая версия**: ${updateResult.currentVersion}` }], isError: true };
+          }
+          const updated = updateResult;
           return { content: [{ type: 'text', text: `✅ Запись обновлена!\n\n**ID**: ${updated.id}\n**Заголовок**: ${updated.title}\n**Статус**: ${updated.status}` }] };
         }
 
@@ -317,9 +321,9 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
         case 'memory_unarchive': {
           const id = args?.id as string;
           if (!id) return { content: [{ type: 'text', text: '❌ Укажите ID записи.' }], isError: true };
-          const updated = await memoryManager.update({ id, status: 'active' });
-          if (!updated) return { content: [{ type: 'text', text: `❌ Запись "${id}" не найдена.` }] };
-          return { content: [{ type: 'text', text: `📤 Разархивировано!\n\n**ID**: ${updated.id}\n**Заголовок**: ${updated.title}` }] };
+          const unarchiveResult = await memoryManager.update({ id, status: 'active' });
+          if (!unarchiveResult || ('conflict' in unarchiveResult)) return { content: [{ type: 'text', text: `❌ Запись "${id}" не найдена.` }] };
+          return { content: [{ type: 'text', text: `📤 Разархивировано!\n\n**ID**: ${unarchiveResult.id}\n**Заголовок**: ${unarchiveResult.title}` }] };
         }
 
         case 'memory_pin': {

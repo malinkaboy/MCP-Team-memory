@@ -16,7 +16,8 @@ import type {
   SyncResult,
   MemoryStats,
   WSEvent,
-  WSEventType
+  WSEventType,
+  ConflictError
 } from './types.js';
 
 type EventListener = (event: WSEvent) => void;
@@ -143,37 +144,48 @@ export class MemoryManager {
     return created;
   }
 
-  async update(params: UpdateParams): Promise<MemoryEntry | null> {
-    const { id, ...updates } = params;
+  async update(params: UpdateParams): Promise<MemoryEntry | ConflictError | null> {
+    const { id, expectedVersion, ...updates } = params;
 
     const filteredUpdates = Object.fromEntries(
       Object.entries(updates).filter(([_, value]) => value !== undefined)
     ) as Partial<MemoryEntry>;
 
-    // Save current version before updating
+    // Save current version BEFORE the update attempt.
+    // Fetch pre-update state, but commit to entry_versions only on success.
+    let preUpdateEntry: MemoryEntry | undefined;
     if (this.versionManager) {
-      const current = await this.storage.getById(id);
-      if (current) {
-        await this.versionManager.saveVersion(current).catch(err =>
+      preUpdateEntry = await this.storage.getById(id);
+    }
+
+    const result = await this.storage.update(id, filteredUpdates, expectedVersion);
+
+    // Check for conflict — don't save version on conflict
+    if (result && 'conflict' in result && result.conflict) {
+      return result as ConflictError;
+    }
+
+    const updated = result as MemoryEntry | undefined;
+
+    if (updated) {
+      // Save version snapshot only AFTER successful update
+      if (this.versionManager && preUpdateEntry) {
+        await this.versionManager.saveVersion(preUpdateEntry).catch(err =>
           logger.error({ err }, 'Version save failed')
         );
       }
-    }
 
-    const result = await this.storage.update(id, filteredUpdates);
-
-    if (result && !('conflict' in result)) {
-      this.emit('memory:updated', result);
+      this.emit('memory:updated', updated);
       this.auditLogger?.log({
-        entryId: result.id,
-        projectId: result.projectId,
+        entryId: updated.id,
+        projectId: updated.projectId,
         action: 'update',
-        actor: result.author,
+        actor: updated.author,
         changes: Object.fromEntries(
-          Object.entries(params).filter(([k]) => k !== 'id')
+          Object.entries(params).filter(([k]) => k !== 'id' && k !== 'expectedVersion')
         ),
       }).catch(err => logger.error({ err }, 'Audit log failed'));
-      return result;
+      return updated;
     }
 
     return null;
