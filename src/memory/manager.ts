@@ -160,20 +160,20 @@ export class MemoryManager {
       }
     }
 
-    const updated = await this.storage.update(id, filteredUpdates);
+    const result = await this.storage.update(id, filteredUpdates);
 
-    if (updated) {
-      this.emit('memory:updated', updated);
+    if (result && !('conflict' in result)) {
+      this.emit('memory:updated', result);
       this.auditLogger?.log({
-        entryId: updated.id,
-        projectId: updated.projectId,
+        entryId: result.id,
+        projectId: result.projectId,
         action: 'update',
-        actor: updated.author,
+        actor: result.author,
         changes: Object.fromEntries(
           Object.entries(params).filter(([k]) => k !== 'id')
         ),
       }).catch(err => logger.error({ err }, 'Audit log failed'));
-      return updated;
+      return result;
     }
 
     return null;
@@ -214,16 +214,16 @@ export class MemoryManager {
   }
 
   async pin(id: string, pinned: boolean = true): Promise<MemoryEntry | null> {
-    const updated = await this.storage.update(id, { pinned });
-    if (updated) {
-      this.emit('memory:updated', updated);
+    const result = await this.storage.update(id, { pinned });
+    if (result && !('conflict' in result)) {
+      this.emit('memory:updated', result);
       this.auditLogger?.log({
-        entryId: updated.id,
-        projectId: updated.projectId,
+        entryId: result.id,
+        projectId: result.projectId,
         action: pinned ? 'pin' : 'unpin',
-        actor: updated.author,
+        actor: result.author,
       }).catch(err => logger.error({ err }, 'Audit log failed'));
-      return updated;
+      return result;
     }
     return null;
   }

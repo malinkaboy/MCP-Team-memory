@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { Migrator } from './migrator.js';
 import { DEFAULT_PROJECT_ID } from '../memory/types.js';
-import type { MemoryEntry, Project, ReadParams } from '../memory/types.js';
+import type { MemoryEntry, Project, ReadParams, ConflictError } from '../memory/types.js';
 import { toISOString } from './utils.js';
 import logger from '../logger.js';
 
@@ -277,7 +277,7 @@ export class PgStorage {
     return rowToEntry(rows[0]);
   }
 
-  async update(id: string, updates: Partial<MemoryEntry>): Promise<MemoryEntry | undefined> {
+  async update(id: string, updates: Partial<MemoryEntry>, expectedVersion?: number): Promise<MemoryEntry | ConflictError | undefined> {
     const setClauses: string[] = [];
     const values: unknown[] = [];
     let paramIdx = 1;
@@ -311,8 +311,62 @@ export class PgStorage {
       values.push(updates.relatedIds);
     }
 
-    if (setClauses.length === 0) return this.getById(id);
+    if (setClauses.length === 0) {
+      const entry = await this.getById(id);
+      return entry;
+    }
 
+    // If expectedVersion is provided, use atomic transaction with row lock
+    if (expectedVersion !== undefined) {
+      const client = await this.pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Lock the row
+        const { rows: lockRows } = await client.query(
+          'SELECT * FROM entries WHERE id = $1 FOR UPDATE',
+          [id]
+        );
+        if (lockRows.length === 0) {
+          await client.query('ROLLBACK');
+          return undefined;
+        }
+
+        // Check current version
+        const { rows: versionRows } = await client.query(
+          'SELECT MAX(version) as max FROM entry_versions WHERE entry_id = $1',
+          [id]
+        );
+        const currentVersion = versionRows[0]?.max ?? 0;
+
+        if (currentVersion !== expectedVersion) {
+          await client.query('ROLLBACK');
+          const currentEntry = rowToEntry(lockRows[0]);
+          return {
+            conflict: true,
+            currentVersion,
+            currentEntry,
+            message: `Entry was modified (expected version ${expectedVersion}, current ${currentVersion})`,
+          };
+        }
+
+        // Version matches — perform update
+        values.push(id);
+        const { rows } = await client.query(
+          `UPDATE entries SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
+          values
+        );
+        await client.query('COMMIT');
+        return rows.length > 0 ? rowToEntry(rows[0]) : undefined;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+
+    // No expectedVersion — original behavior (last-write-wins)
     values.push(id);
     const { rows } = await this.pool.query(
       `UPDATE entries SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
@@ -327,11 +381,14 @@ export class PgStorage {
   }
 
   async archive(id: string): Promise<MemoryEntry | undefined> {
-    return this.update(id, { status: 'archived' });
+    const result = await this.update(id, { status: 'archived' });
+    // archive() never uses expectedVersion, so ConflictError is impossible
+    return result as MemoryEntry | undefined;
   }
 
   async unarchive(id: string): Promise<MemoryEntry | undefined> {
-    return this.update(id, { status: 'active' });
+    const result = await this.update(id, { status: 'active' });
+    return result as MemoryEntry | undefined;
   }
 
   async getChangesSince(projectId: string, since: string): Promise<MemoryEntry[]> {
@@ -420,5 +477,12 @@ export class PgStorage {
       [projectId]
     );
     return rows[0]?.last ? toISOString(rows[0].last) : new Date().toISOString();
+  }
+
+  /** @internal Test-only factory that injects a mock pool */
+  static __createForTest(pool: pg.Pool): PgStorage {
+    const instance = Object.create(PgStorage.prototype) as PgStorage;
+    instance['pool'] = pool;
+    return instance;
   }
 }
