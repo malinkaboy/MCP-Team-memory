@@ -5,10 +5,13 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   type Tool,
   type Resource
 } from '@modelcontextprotocol/sdk/types.js';
 import { MemoryManager } from './memory/manager.js';
+import { buildAutoContext } from './recall.js';
 import logger from './logger.js';
 import type {
   Category,
@@ -40,7 +43,7 @@ import { exportEntries, type ExportFormat } from './export/exporter.js';
 export function buildMcpServer(memoryManager: MemoryManager): Server {
   const server = new Server(
     { name: 'team-memory', version: '2.0.0' },
-    { capabilities: { tools: {}, resources: {} } }
+    { capabilities: { tools: {}, resources: {}, prompts: {} } }
   );
 
   setupHandlers(server, memoryManager);
@@ -504,6 +507,58 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
       return { contents: [{ uri, mimeType: 'text/markdown', text }] };
     }
     throw new Error(`Unknown resource: ${uri}`);
+  });
+
+  // === Prompts ===
+
+  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    return {
+      prompts: [{
+        name: 'auto-context',
+        description: 'Returns relevant team memory entries for the current session. Use at session start for automatic context.',
+        arguments: [
+          { name: 'project_id', description: 'Project ID', required: false },
+          { name: 'context', description: 'Current task description for semantic matching', required: false },
+          { name: 'limit', description: 'Max entries to return (default 10)', required: false },
+        ],
+      }],
+    };
+  });
+
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const { name, arguments: promptArgs } = request.params;
+
+    if (name !== 'auto-context') {
+      throw new Error(`Unknown prompt: ${name}`);
+    }
+
+    try {
+      const projectId = promptArgs?.project_id;
+      const context = promptArgs?.context;
+      const parsed = promptArgs?.limit ? parseInt(promptArgs.limit, 10) : 10;
+      const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+
+      const result = await buildAutoContext(memoryManager, {
+        projectId,
+        context,
+        limit,
+      });
+
+      return {
+        messages: [{
+          role: 'user',
+          content: { type: 'text', text: result.formatted },
+        }],
+      };
+    } catch (err) {
+      logger.error({ err }, 'Auto-context prompt failed');
+      return {
+        messages: [{
+          role: 'user',
+          content: { type: 'text', text: 'Failed to load team memory context.' },
+        }],
+      };
+    }
   });
 }
 
