@@ -14,6 +14,9 @@ export interface AppConfig {
   decayThreshold: number | undefined;
   decayDays: number;
   decayWeights: [number, number, number, number];
+  // Embedding config
+  embeddingProvider: string | undefined;  // 'local' or undefined (disabled)
+  embeddingModelDir: string;
 }
 
 /** Parse integer with fallback to default on NaN */
@@ -39,5 +42,7 @@ export function loadConfig(): AppConfig {
       : undefined,
     decayDays: parseIntSafe(process.env.MEMORY_DECAY_DAYS || '30', 30),
     decayWeights,
+    embeddingProvider: process.env.MEMORY_EMBEDDING_PROVIDER || undefined,
+    embeddingModelDir: process.env.MEMORY_EMBEDDING_MODEL_DIR || 'data/models',
   };
 }

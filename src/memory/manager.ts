@@ -4,6 +4,7 @@ import { AuditLogger } from '../storage/audit.js';
 import { VersionManager } from '../storage/versioning.js';
 import { DEFAULT_PROJECT_ID } from './types.js';
 import logger from '../logger.js';
+import type { EmbeddingProvider } from '../embedding/provider.js';
 import type {
   MemoryEntry,
   Project,
@@ -26,6 +27,7 @@ export class MemoryManager {
   private storage: PgStorage;
   private auditLogger: AuditLogger | null = null;
   private versionManager: VersionManager | null = null;
+  private embeddingProvider: EmbeddingProvider | null = null;
   private listeners: Set<EventListener> = new Set();
   private autoArchiveInterval: NodeJS.Timeout | null = null;
 
@@ -94,6 +96,22 @@ export class MemoryManager {
     const { category = 'all', domain, search, limit = 50, status, tags } = params;
 
     if (search) {
+      // Use hybrid search when embedding provider is available
+      if (this.embeddingProvider?.isReady()) {
+        try {
+          const queryEmbedding = await this.embeddingProvider.embed(search);
+          return this.storage.hybridSearch(projectId, search, queryEmbedding, {
+            category: category === 'all' ? undefined : category,
+            domain,
+            status,
+            tags,
+            limit,
+          });
+        } catch (err) {
+          logger.warn({ err }, 'Hybrid search failed, falling back to FTS');
+        }
+      }
+
       return this.storage.search(projectId, search, {
         category: category === 'all' ? undefined : category,
         domain,
@@ -141,6 +159,14 @@ export class MemoryManager {
       actor: created.author,
       changes: { title: created.title, category: created.category },
     }).catch(err => logger.error({ err }, 'Audit log failed'));
+
+    // Fire-and-forget: generate embedding for new entry
+    if (this.embeddingProvider?.isReady()) {
+      this.embeddingProvider.embed(`${created.title} ${created.content}`)
+        .then(emb => this.storage.saveEmbedding(created.id, emb))
+        .catch(err => logger.error({ err, entryId: created.id }, 'Embedding generation failed'));
+    }
+
     return created;
   }
 
@@ -185,6 +211,14 @@ export class MemoryManager {
           Object.entries(params).filter(([k]) => k !== 'id' && k !== 'expectedVersion')
         ),
       }).catch(err => logger.error({ err }, 'Audit log failed'));
+
+      // Fire-and-forget: regenerate embedding if content or title changed
+      if (this.embeddingProvider?.isReady() && (params.title || params.content)) {
+        this.embeddingProvider.embed(`${updated.title} ${updated.content}`)
+          .then(emb => this.storage.saveEmbedding(updated.id, emb))
+          .catch(err => logger.error({ err, entryId: updated.id }, 'Embedding regeneration failed'));
+      }
+
       return updated;
     }
 
@@ -246,6 +280,41 @@ export class MemoryManager {
 
   getVersionManager(): VersionManager | null {
     return this.versionManager;
+  }
+
+  // === Embedding ===
+
+  setEmbeddingProvider(provider: EmbeddingProvider): void {
+    this.embeddingProvider = provider;
+    logger.info('Embedding provider set');
+  }
+
+  getEmbeddingProvider(): EmbeddingProvider | null {
+    return this.embeddingProvider;
+  }
+
+  /** Backfill embeddings for entries that don't have one yet */
+  async backfillEmbeddings(batchSize: number = 50): Promise<number> {
+    if (!this.embeddingProvider?.isReady()) return 0;
+
+    const entries = await this.storage.getEntriesWithoutEmbedding(batchSize);
+    let count = 0;
+
+    for (const entry of entries) {
+      try {
+        const text = `${entry.title} ${entry.content}`;
+        const embedding = await this.embeddingProvider.embed(text);
+        await this.storage.saveEmbedding(entry.id, embedding);
+        count++;
+      } catch (err) {
+        logger.error({ err, entryId: entry.id }, 'Embedding backfill failed for entry');
+      }
+    }
+
+    if (count > 0) {
+      logger.info({ count, total: entries.length }, 'Backfilled embeddings');
+    }
+    return count;
   }
 
   // === Sync ===

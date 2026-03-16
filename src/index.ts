@@ -36,6 +36,17 @@ if (config.transport === 'http') {
     const mcpServer = new TeamMemoryMCPServer(memoryManager);
     await mcpServer.start();
 
+    // Embedding provider (optional — set MEMORY_EMBEDDING_PROVIDER=local to enable)
+    if (config.embeddingProvider === 'local') {
+      const { LocalEmbeddingProvider } = await import('./embedding/local.js');
+      const embProvider = new LocalEmbeddingProvider(config.embeddingModelDir);
+      await embProvider.initialize();
+      if (embProvider.isReady()) {
+        memoryManager.setEmbeddingProvider(embProvider);
+        memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
+      }
+    }
+
     if (config.autoArchiveEnabled) {
       const decayConfig = config.decayThreshold !== undefined
         ? { threshold: config.decayThreshold, decayDays: config.decayDays, weights: config.decayWeights }

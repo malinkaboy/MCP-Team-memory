@@ -495,6 +495,93 @@ export class PgStorage {
     return rows[0]?.last ? toISOString(rows[0].last) : new Date().toISOString();
   }
 
+  /** Hybrid search: combines full-text search with vector similarity */
+  async hybridSearch(
+    projectId: string,
+    query: string,
+    queryEmbedding?: number[],
+    filters?: {
+      category?: string;
+      domain?: string;
+      status?: string;
+      tags?: string[];
+      limit?: number;
+    }
+  ): Promise<MemoryEntry[]> {
+    // Fall back to regular search when no embedding available
+    if (!queryEmbedding) {
+      return this.search(projectId, query, filters);
+    }
+
+    const conditions: string[] = ['project_id = $1', "status = 'active'"];
+    const values: unknown[] = [projectId];
+    let paramIdx = 2;
+
+    // Text + vector match condition
+    conditions.push(
+      `(search_vector @@ plainto_tsquery('simple', $${paramIdx}) OR embedding <=> $${paramIdx + 1}::vector < 0.4)`
+    );
+    values.push(query, `[${queryEmbedding.join(',')}]`);
+    const textParamIdx = paramIdx;
+    const vectorParamIdx = paramIdx + 1;
+    paramIdx += 2;
+
+    if (filters?.category && filters.category !== 'all') {
+      conditions.push(`category = $${paramIdx++}`);
+      values.push(filters.category);
+    }
+    if (filters?.domain) {
+      conditions.push(`domain = $${paramIdx++}`);
+      values.push(filters.domain);
+    }
+    if (filters?.status) {
+      conditions[1] = `status = $${paramIdx++}`;
+      values.push(filters.status);
+    }
+    if (filters?.tags && filters.tags.length > 0) {
+      conditions.push(`tags && $${paramIdx++}`);
+      values.push(filters.tags);
+    }
+
+    const limit = filters?.limit || 50;
+    values.push(limit);
+
+    const sql = `
+      SELECT *,
+        ts_rank(search_vector, plainto_tsquery('simple', $${textParamIdx})) AS text_score,
+        1 - (embedding <=> $${vectorParamIdx}::vector) AS vector_score
+      FROM entries
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY (
+        0.4 * COALESCE(ts_rank(search_vector, plainto_tsquery('simple', $${textParamIdx})), 0)
+        + 0.6 * COALESCE(1 - (embedding <=> $${vectorParamIdx}::vector), 0)
+      ) DESC
+      LIMIT $${paramIdx}
+    `;
+
+    const { rows } = await this.pool.query(sql, values);
+    const entries = rows.map(rowToEntry);
+    this.trackReads(entries.map(e => e.id));
+    return this.attachVersions(entries);
+  }
+
+  /** Save embedding vector for an entry */
+  async saveEmbedding(id: string, embedding: number[]): Promise<void> {
+    await this.pool.query(
+      `UPDATE entries SET embedding = $1::vector WHERE id = $2`,
+      [`[${embedding.join(',')}]`, id]
+    );
+  }
+
+  /** Get entries that have no embedding yet (for backfill) */
+  async getEntriesWithoutEmbedding(limit: number = 50): Promise<MemoryEntry[]> {
+    const { rows } = await this.pool.query(
+      `SELECT * FROM entries WHERE embedding IS NULL AND status = 'active' ORDER BY updated_at DESC LIMIT $1`,
+      [limit]
+    );
+    return rows.map(rowToEntry);
+  }
+
   /** Fire-and-forget: increment read_count for returned entry IDs */
   private trackReads(ids: string[]): void {
     if (ids.length === 0) return;
