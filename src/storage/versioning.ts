@@ -56,6 +56,14 @@ export class VersionManager {
     return rows.length > 0 ? this.rowToVersion(rows[0]) : null;
   }
 
+  async getCurrentVersion(entryId: string): Promise<number | null> {
+    const { rows } = await this.pool.query(
+      `SELECT MAX(version) as max FROM entry_versions WHERE entry_id = $1`,
+      [entryId]
+    );
+    return rows[0]?.max ?? null;
+  }
+
   private rowToVersion(row: Record<string, unknown>): EntryVersion {
     return {
       id: row.id as number,
