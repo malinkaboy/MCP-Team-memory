@@ -10,6 +10,8 @@ import logger from '../logger.js';
  */
 export class LocalEmbeddingProvider implements EmbeddingProvider {
   readonly dimensions = 384;
+  readonly modelName = 'all-MiniLM-L6-v2';
+  readonly providerType = 'local' as const;
   private session: any = null;
   private tokenizer: any = null;
   private ort: any = null;

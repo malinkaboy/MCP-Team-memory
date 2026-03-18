@@ -15,8 +15,9 @@ export interface AppConfig {
   decayDays: number;
   decayWeights: [number, number, number, number];
   // Embedding config
-  embeddingProvider: string | undefined;  // 'local' or undefined (disabled)
+  embeddingProvider: string | undefined;  // 'local' | 'gemini' | undefined (disabled)
   embeddingModelDir: string;
+  geminiApiKey: string | undefined;
 }
 
 /** Parse integer with fallback to default on NaN */
@@ -44,5 +45,6 @@ export function loadConfig(): AppConfig {
     decayWeights,
     embeddingProvider: process.env.MEMORY_EMBEDDING_PROVIDER || undefined,
     embeddingModelDir: process.env.MEMORY_EMBEDDING_MODEL_DIR || 'data/models',
+    geminiApiKey: process.env.GEMINI_API_KEY || undefined,
   };
 }

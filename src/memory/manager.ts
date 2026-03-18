@@ -100,7 +100,7 @@ export class MemoryManager {
       // Use hybrid search when embedding provider is available
       if (this.embeddingProvider?.isReady()) {
         try {
-          const queryEmbedding = await this.embeddingProvider.embed(search);
+          const queryEmbedding = await this.embeddingProvider.embed(search, 'query');
           return this.storage.hybridSearch(projectId, search, queryEmbedding, {
             category: category === 'all' ? undefined : category,
             domain,
@@ -163,7 +163,7 @@ export class MemoryManager {
 
     // Fire-and-forget: generate embedding for new entry
     if (this.embeddingProvider?.isReady()) {
-      this.embeddingProvider.embed(`${created.title} ${created.content}`)
+      this.embeddingProvider.embed(`${created.title} ${created.content}`, 'document')
         .then(emb => this.storage.saveEmbedding(created.id, emb))
         .catch(err => logger.error({ err, entryId: created.id }, 'Embedding generation failed'));
     }
@@ -215,7 +215,7 @@ export class MemoryManager {
 
       // Fire-and-forget: regenerate embedding if content or title changed
       if (this.embeddingProvider?.isReady() && (params.title || params.content)) {
-        this.embeddingProvider.embed(`${updated.title} ${updated.content}`)
+        this.embeddingProvider.embed(`${updated.title} ${updated.content}`, 'document')
           .then(emb => this.storage.saveEmbedding(updated.id, emb))
           .catch(err => logger.error({ err, entryId: updated.id }, 'Embedding regeneration failed'));
       }
@@ -294,28 +294,89 @@ export class MemoryManager {
     return this.embeddingProvider;
   }
 
-  /** Backfill embeddings for entries that don't have one yet */
+  async getEmbeddingStats(): Promise<{
+    provider: string | null;
+    model: string | null;
+    isReady: boolean;
+    dimensions: number | null;
+    entriesEmbedded: number;
+    entriesTotal: number;
+  }> {
+    const p = this.embeddingProvider;
+    const embStats = await this.storage.countEmbeddingStats();
+    return {
+      provider: p?.providerType ?? null,
+      model: p?.modelName ?? null,
+      isReady: p?.isReady() ?? false,
+      dimensions: p?.dimensions ?? null,
+      entriesEmbedded: embStats.embedded,
+      entriesTotal: embStats.total,
+    };
+  }
+
+  /** Backfill embeddings for entries that don't have one yet (loops until all done) */
   async backfillEmbeddings(batchSize: number = 50): Promise<number> {
     if (!this.embeddingProvider?.isReady()) return 0;
 
-    const entries = await this.storage.getEntriesWithoutEmbedding(batchSize);
-    let count = 0;
+    const provider = this.embeddingProvider;
+    const hasBatch = 'embedBatch' in provider && typeof (provider as any).embedBatch === 'function';
+    let totalCount = 0;
 
-    for (const entry of entries) {
-      try {
-        const text = `${entry.title} ${entry.content}`;
-        const embedding = await this.embeddingProvider.embed(text);
-        await this.storage.saveEmbedding(entry.id, embedding);
-        count++;
-      } catch (err) {
-        logger.error({ err, entryId: entry.id }, 'Embedding backfill failed for entry');
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const entries = await this.storage.getEntriesWithoutEmbedding(batchSize);
+      if (entries.length === 0) break;
+
+      let batchCount = 0;
+
+      if (hasBatch) {
+        // Batch mode: one API call per batch (much more efficient)
+        try {
+          const texts = entries.map(e => `${e.title} ${e.content}`);
+          const embeddings = await (provider as any).embedBatch(texts, 'document') as number[][];
+          for (let i = 0; i < entries.length; i++) {
+            await this.storage.saveEmbedding(entries[i].id, embeddings[i]);
+            batchCount++;
+          }
+        } catch (err) {
+          logger.error({ err }, 'Embedding batch backfill failed, falling back to sequential');
+          // Fallback to sequential on batch failure
+          for (const entry of entries) {
+            try {
+              const text = `${entry.title} ${entry.content}`;
+              const embedding = await provider.embed(text, 'document');
+              await this.storage.saveEmbedding(entry.id, embedding);
+              batchCount++;
+            } catch (seqErr) {
+              logger.error({ err: seqErr, entryId: entry.id }, 'Embedding backfill failed for entry');
+            }
+          }
+        }
+      } else {
+        // Sequential mode: one API call per entry
+        for (const entry of entries) {
+          try {
+            const text = `${entry.title} ${entry.content}`;
+            const embedding = await provider.embed(text, 'document');
+            await this.storage.saveEmbedding(entry.id, embedding);
+            batchCount++;
+          } catch (err) {
+            logger.error({ err, entryId: entry.id }, 'Embedding backfill failed for entry');
+          }
+        }
       }
+
+      totalCount += batchCount;
+      logger.info({ batchCount, totalCount, batchFailed: entries.length - batchCount }, 'Backfill batch completed');
+
+      // If nothing succeeded in this batch, stop to avoid infinite loop
+      if (batchCount === 0) break;
     }
 
-    if (count > 0) {
-      logger.info({ count, total: entries.length }, 'Backfilled embeddings');
+    if (totalCount > 0) {
+      logger.info({ totalCount }, 'Backfill complete');
     }
-    return count;
+    return totalCount;
   }
 
   // === Sync ===

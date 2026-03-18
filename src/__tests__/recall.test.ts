@@ -82,6 +82,8 @@ describe('buildAutoContext', () => {
       embed: vi.fn().mockResolvedValue(new Array(384).fill(0.1)),
       isReady: vi.fn().mockReturnValue(true),
       dimensions: 384,
+      modelName: 'test-model',
+      providerType: 'local' as const,
     };
     manager.getEmbeddingProvider.mockReturnValue(mockProvider);
     manager.getStorage().hybridSearch.mockResolvedValueOnce([semanticEntry]);

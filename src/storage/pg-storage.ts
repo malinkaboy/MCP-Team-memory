@@ -345,7 +345,7 @@ export class PgStorage {
 
         // Check current version
         const { rows: versionRows } = await client.query(
-          'SELECT MAX(version) as max FROM entry_versions WHERE entry_id = $1',
+          'SELECT MAX(version) as max FROM entry_versions WHERE entry_id = $1::uuid',
           [id]
         );
         const currentVersion = versionRows[0]?.max ?? 0;
@@ -521,7 +521,7 @@ export class PgStorage {
 
     // Text + vector match condition
     conditions.push(
-      `(search_vector @@ plainto_tsquery('simple', $${paramIdx}) OR embedding <=> $${paramIdx + 1}::vector < 0.4)`
+      `(search_vector @@ plainto_tsquery('simple', $${paramIdx}) OR embedding <=> $${paramIdx + 1}::vector < 0.7)`
     );
     values.push(query, `[${queryEmbedding.join(',')}]`);
     const textParamIdx = paramIdx;
@@ -578,10 +578,21 @@ export class PgStorage {
   /** Get entries that have no embedding yet (for backfill) */
   async getEntriesWithoutEmbedding(limit: number = 50): Promise<MemoryEntry[]> {
     const { rows } = await this.pool.query(
-      `SELECT * FROM entries WHERE embedding IS NULL AND status = 'active' ORDER BY updated_at DESC LIMIT $1`,
+      `SELECT * FROM entries WHERE embedding IS NULL ORDER BY updated_at DESC LIMIT $1`,
       [limit]
     );
     return rows.map(rowToEntry);
+  }
+
+  /** Count active entries that have embeddings and total active entries */
+  async countEmbeddingStats(): Promise<{ embedded: number; total: number }> {
+    const { rows } = await this.pool.query(
+      `SELECT
+         count(*) FILTER (WHERE embedding IS NOT NULL)::int as embedded,
+         count(*)::int as total
+       FROM entries`
+    );
+    return { embedded: rows[0].embedded, total: rows[0].total };
   }
 
   /** Fire-and-forget: increment read_count for returned entry IDs */
@@ -609,7 +620,7 @@ export class PgStorage {
     if (entries.length === 0) return entries;
     const ids = entries.map(e => e.id);
     const { rows } = await this.pool.query(
-      `SELECT entry_id, MAX(version) as max_version FROM entry_versions WHERE entry_id = ANY($1) GROUP BY entry_id`,
+      `SELECT entry_id, MAX(version) as max_version FROM entry_versions WHERE entry_id = ANY($1::uuid[]) GROUP BY entry_id`,
       [ids]
     );
     const versionMap = new Map(rows.map((r: any) => [r.entry_id, r.max_version]));

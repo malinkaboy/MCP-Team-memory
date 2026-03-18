@@ -147,7 +147,8 @@ export class WebServer {
           stats.connectedAgents = this.wsServer.getConnectedCount();
         }
 
-        res.json({ success: true, stats });
+        const embedding = await this.memoryManager.getEmbeddingStats();
+        res.json({ success: true, stats, embedding });
       } catch (error) {
         logger.error({ err: error }, 'API error');
         res.status(500).json({ success: false, error: 'Internal server error' });

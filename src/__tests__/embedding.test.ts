@@ -22,6 +22,8 @@ function createMockPool() {
 function createMockEmbeddingProvider(ready = true): EmbeddingProvider {
   return {
     dimensions: 384,
+    modelName: 'test-model',
+    providerType: 'local',
     isReady: () => ready,
     embed: vi.fn().mockResolvedValue(new Array(384).fill(0.1)),
   };
@@ -183,7 +185,7 @@ describe('MemoryManager embedding integration', () => {
     });
 
     expect(result.id).toBe('new-1');
-    expect(provider.embed).toHaveBeenCalledWith('New entry Content');
+    expect(provider.embed).toHaveBeenCalledWith('New entry Content', 'document');
 
     // Wait for fire-and-forget to complete
     await vi.waitFor(() => {
@@ -221,7 +223,7 @@ describe('MemoryManager embedding integration', () => {
 
     const results = await manager.read({ search: 'test query' });
 
-    expect(provider.embed).toHaveBeenCalledWith('test query');
+    expect(provider.embed).toHaveBeenCalledWith('test query', 'query');
     expect(results).toHaveLength(1);
     expect(results[0].title).toBe('Found');
   });
@@ -265,7 +267,7 @@ describe('MemoryManager embedding integration', () => {
     const count = await manager.backfillEmbeddings(10);
 
     expect(count).toBe(1);
-    expect(provider.embed).toHaveBeenCalledWith('Backfill me Needs embedding');
+    expect(provider.embed).toHaveBeenCalledWith('Backfill me Needs embedding', 'document');
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining('SET embedding'),
       expect.any(Array)
@@ -278,5 +280,143 @@ describe('MemoryManager embedding integration', () => {
 
     const count = await manager.backfillEmbeddings();
     expect(count).toBe(0);
+  });
+
+  it('backfillEmbeddings processes multiple batches until done', async () => {
+    manager.setEmbeddingProvider(provider);
+
+    const fakeRow1 = {
+      id: 'batch-1', project_id: 'default', category: 'tasks', domain: null,
+      title: 'First', content: 'Content 1', author: 'tester', tags: [],
+      priority: 'medium', status: 'active', pinned: false,
+      created_at: new Date(), updated_at: new Date(), related_ids: [],
+      read_count: 0, last_read_at: null,
+    };
+    const fakeRow2 = {
+      id: 'batch-2', project_id: 'default', category: 'tasks', domain: null,
+      title: 'Second', content: 'Content 2', author: 'tester', tags: [],
+      priority: 'medium', status: 'archived', pinned: false,
+      created_at: new Date(), updated_at: new Date(), related_ids: [],
+      read_count: 0, last_read_at: null,
+    };
+
+    // Batch 1 returns one entry, batch 2 returns another, batch 3 returns empty
+    pool.query
+      .mockResolvedValueOnce({ rows: [fakeRow1] })  // getEntriesWithoutEmbedding batch 1
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // saveEmbedding
+      .mockResolvedValueOnce({ rows: [fakeRow2] })  // getEntriesWithoutEmbedding batch 2
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // saveEmbedding
+      .mockResolvedValueOnce({ rows: [] });          // getEntriesWithoutEmbedding batch 3 (empty)
+
+    const count = await manager.backfillEmbeddings(1);
+
+    expect(count).toBe(2);
+    expect(provider.embed).toHaveBeenCalledTimes(2);
+  });
+
+  it('backfillEmbeddings stops on complete failure to prevent infinite loop', async () => {
+    const failProvider = createMockEmbeddingProvider(true);
+    (failProvider.embed as any).mockRejectedValue(new Error('API error'));
+    manager.setEmbeddingProvider(failProvider);
+
+    const fakeRow = {
+      id: 'fail-1', project_id: 'default', category: 'tasks', domain: null,
+      title: 'Will fail', content: 'Content', author: 'tester', tags: [],
+      priority: 'medium', status: 'active', pinned: false,
+      created_at: new Date(), updated_at: new Date(), related_ids: [],
+      read_count: 0, last_read_at: null,
+    };
+    pool.query.mockResolvedValueOnce({ rows: [fakeRow] });
+
+    const count = await manager.backfillEmbeddings(10);
+
+    expect(count).toBe(0);
+    // Should NOT call getEntriesWithoutEmbedding again after failure
+    expect(pool.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('backfillEmbeddings uses embedBatch when available', async () => {
+    const batchProvider = {
+      ...createMockEmbeddingProvider(true),
+      embedBatch: vi.fn().mockResolvedValue([new Array(384).fill(0.1), new Array(384).fill(0.2)]),
+    };
+    manager.setEmbeddingProvider(batchProvider);
+
+    const fakeRows = [
+      {
+        id: 'b1', project_id: 'default', category: 'tasks', domain: null,
+        title: 'Entry 1', content: 'Content 1', author: 'tester', tags: [],
+        priority: 'medium', status: 'active', pinned: false,
+        created_at: new Date(), updated_at: new Date(), related_ids: [],
+        read_count: 0, last_read_at: null,
+      },
+      {
+        id: 'b2', project_id: 'default', category: 'tasks', domain: null,
+        title: 'Entry 2', content: 'Content 2', author: 'tester', tags: [],
+        priority: 'medium', status: 'active', pinned: false,
+        created_at: new Date(), updated_at: new Date(), related_ids: [],
+        read_count: 0, last_read_at: null,
+      },
+    ];
+    pool.query.mockResolvedValueOnce({ rows: fakeRows }); // getEntriesWithoutEmbedding
+
+    const count = await manager.backfillEmbeddings(10);
+
+    expect(count).toBe(2);
+    expect(batchProvider.embedBatch).toHaveBeenCalledWith(
+      ['Entry 1 Content 1', 'Entry 2 Content 2'],
+      'document'
+    );
+    // embed() should NOT have been called (batch was used)
+    expect(batchProvider.embed).not.toHaveBeenCalled();
+  });
+});
+
+describe('GeminiEmbeddingProvider', () => {
+  it('constructs correct embed request URL and body', async () => {
+    const mockResponse = {
+      ok: true,
+      json: vi.fn().mockResolvedValue({ embedding: { values: [0.1, 0.2, 0.3] } }),
+    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(mockResponse);
+
+    try {
+      const { GeminiEmbeddingProvider } = await import('../embedding/gemini.js');
+      const provider = new GeminiEmbeddingProvider('test-key');
+      const result = await provider.embed('hello world', 'query');
+
+      expect(result).toEqual([0.1, 0.2, 0.3]);
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('embedContent'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ 'x-goog-api-key': 'test-key' }),
+          body: expect.stringContaining('RETRIEVAL_QUERY'),
+        })
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('handles non-JSON error response gracefully', async () => {
+    // Use 400 (not retryable) to avoid retry delays in test
+    const mockResponse = {
+      ok: false,
+      status: 400,
+      json: vi.fn().mockRejectedValue(new Error('not json')),
+    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(mockResponse);
+
+    try {
+      const { GeminiEmbeddingProvider } = await import('../embedding/gemini.js');
+      const provider = new GeminiEmbeddingProvider('test-key');
+
+      await expect(provider.embed('test')).rejects.toThrow('HTTP 400');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

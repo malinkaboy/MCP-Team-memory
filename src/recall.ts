@@ -66,7 +66,7 @@ export async function buildAutoContext(
     const embeddingProvider = manager.getEmbeddingProvider();
     if (embeddingProvider?.isReady()) {
       try {
-        const queryEmbedding = await embeddingProvider.embed(context);
+        const queryEmbedding = await embeddingProvider.embed(context, 'query');
         const semantic = await storage.hybridSearch(
           projectId || DEFAULT_PROJECT_ID,
           context,

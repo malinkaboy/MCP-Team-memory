@@ -582,6 +582,11 @@ async function loadStats() {
 
       document.getElementById('agents-count').textContent =
         `${stats.connectedAgents || 0} агентов онлайн`;
+
+      // Embedding stats
+      if (result.embedding) {
+        renderEmbeddingIndicator(result.embedding);
+      }
     }
 
     // Load pinned count
@@ -896,6 +901,116 @@ async function loadGraphEntries() {
     console.error('Failed to load graph entries:', error);
   }
 }
+
+// === Embedding Indicator ===
+
+function renderEmbeddingIndicator(emb) {
+  const dot = document.getElementById('embedding-dot');
+  const countEl = document.getElementById('embedding-count');
+  const indicator = document.getElementById('embedding-indicator');
+  const panel = document.getElementById('embedding-panel');
+
+  if (!emb.provider) {
+    dot.className = 'embedding-dot inactive';
+    countEl.textContent = '—';
+    indicator.title = 'Векторный поиск отключён';
+  } else if (emb.isReady && emb.entriesEmbedded >= emb.entriesTotal) {
+    dot.className = 'embedding-dot active';
+    countEl.textContent = `${emb.entriesEmbedded}/${emb.entriesTotal}`;
+    indicator.title = `${emb.model} · ${emb.dimensions}d · Все записи проиндексированы`;
+  } else if (emb.isReady) {
+    dot.className = 'embedding-dot partial';
+    countEl.textContent = `${emb.entriesEmbedded}/${emb.entriesTotal}`;
+    const pct = emb.entriesTotal > 0 ? Math.round(emb.entriesEmbedded / emb.entriesTotal * 100) : 0;
+    indicator.title = `${emb.model} · ${emb.dimensions}d · ${pct}% проиндексировано`;
+  } else {
+    dot.className = 'embedding-dot inactive';
+    countEl.textContent = '—';
+    indicator.title = 'Модель не инициализирована';
+  }
+
+  // Render models panel
+  renderEmbeddingPanel(emb);
+
+  // Toggle on click
+  indicator.onclick = (e) => {
+    e.stopPropagation();
+    panel.classList.toggle('open');
+  };
+}
+
+function renderEmbeddingPanel(emb) {
+  const modelsEl = document.getElementById('embedding-models');
+  const progressEl = document.getElementById('embedding-progress');
+
+  const models = [
+    {
+      id: 'gemini',
+      label: 'Gemini API',
+      name: 'gemini-embedding-001',
+      dims: 768,
+      active: emb.provider === 'gemini',
+      warning: null
+    },
+    {
+      id: 'local',
+      label: 'Local ONNX',
+      name: 'all-MiniLM-L6-v2',
+      dims: 384,
+      active: emb.provider === 'local',
+      warning: emb.provider !== 'local' ? 'Модель не установлена' : null
+    },
+    {
+      id: 'disabled',
+      label: 'Отключён',
+      name: null,
+      dims: null,
+      active: !emb.provider,
+      warning: null
+    }
+  ];
+
+  modelsEl.innerHTML = models.map(m => `
+    <div class="embedding-model ${m.active ? 'active' : ''}">
+      <div class="embedding-model-radio"></div>
+      <div class="embedding-model-info">
+        <div class="embedding-model-title">
+          ${escapeHtml(m.label)}
+          ${m.dims ? `<span class="embedding-model-dims">${m.dims}d</span>` : ''}
+        </div>
+        ${m.name ? `<div class="embedding-model-name">${escapeHtml(m.name)}</div>` : ''}
+        ${m.warning ? `<div class="embedding-model-warning"><i data-lucide="alert-triangle" style="width:12px;height:12px"></i> ${escapeHtml(m.warning)}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  // Progress bar
+  const pct = emb.entriesTotal > 0 ? Math.round(emb.entriesEmbedded / emb.entriesTotal * 100) : 0;
+  let fillClass = 'empty';
+  if (pct >= 100) fillClass = 'full';
+  else if (pct > 0) fillClass = 'partial';
+
+  progressEl.innerHTML = `
+    <div class="embedding-progress-label">
+      <span>Проиндексировано</span>
+      <span>${emb.entriesEmbedded}/${emb.entriesTotal} (${pct}%)</span>
+    </div>
+    <div class="embedding-progress-bar">
+      <div class="embedding-progress-fill ${fillClass}" style="width: ${pct}%"></div>
+    </div>
+  `;
+
+  lucide.createIcons();
+}
+
+// Close embedding panel on outside click
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('embedding-panel');
+  const indicator = document.getElementById('embedding-indicator');
+  if (panel && !panel.contains(e.target) && !indicator.contains(e.target)) {
+    panel.classList.remove('open');
+  }
+});
 
 function showToast(message, type = 'info') {
   const iconMap = {
