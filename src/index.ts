@@ -36,9 +36,31 @@ if (config.transport === 'http') {
     const mcpServer = new TeamMemoryMCPServer(memoryManager);
     await mcpServer.start();
 
+    // Embedding provider (optional)
+    if (config.embeddingProvider === 'gemini' && config.geminiApiKey) {
+      const { GeminiEmbeddingProvider } = await import('./embedding/gemini.js');
+      const embProvider = new GeminiEmbeddingProvider(config.geminiApiKey);
+      await embProvider.initialize();
+      if (embProvider.isReady()) {
+        memoryManager.setEmbeddingProvider(embProvider);
+        memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
+      }
+    } else if (config.embeddingProvider === 'local') {
+      const { LocalEmbeddingProvider } = await import('./embedding/local.js');
+      const embProvider = new LocalEmbeddingProvider(config.embeddingModelDir);
+      await embProvider.initialize();
+      if (embProvider.isReady()) {
+        memoryManager.setEmbeddingProvider(embProvider);
+        memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
+      }
+    }
+
     if (config.autoArchiveEnabled) {
-      memoryManager.startAutoArchive(config.autoArchiveDays);
-      logger.info({ days: config.autoArchiveDays }, 'Auto-archive enabled');
+      const decayConfig = config.decayThreshold !== undefined
+        ? { threshold: config.decayThreshold, decayDays: config.decayDays, weights: config.decayWeights }
+        : undefined;
+      memoryManager.startAutoArchive(config.autoArchiveDays, undefined, decayConfig);
+      logger.info({ days: config.autoArchiveDays, decay: !!decayConfig }, 'Auto-archive enabled');
     }
 
     logger.info('MCP Server ready. Waiting for commands...');

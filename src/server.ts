@@ -5,10 +5,13 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   type Tool,
   type Resource
 } from '@modelcontextprotocol/sdk/types.js';
 import { MemoryManager } from './memory/manager.js';
+import { buildAutoContext } from './recall.js';
 import logger from './logger.js';
 import type {
   Category,
@@ -18,7 +21,9 @@ import type {
   WriteParams,
   UpdateParams,
   DeleteParams,
-  SyncParams
+  SyncParams,
+  ConflictError,
+  MemoryEntry
 } from './memory/types.js';
 import {
   ReadParamsSchema,
@@ -38,7 +43,7 @@ import { exportEntries, type ExportFormat } from './export/exporter.js';
 export function buildMcpServer(memoryManager: MemoryManager): Server {
   const server = new Server(
     { name: 'team-memory', version: '2.0.0' },
-    { capabilities: { tools: {}, resources: {} } }
+    { capabilities: { tools: {}, resources: {}, prompts: {} } }
   );
 
   setupHandlers(server, memoryManager);
@@ -106,6 +111,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
           type: 'object',
           properties: {
             id: { type: 'string', description: 'ID записи для обновления' },
+            expected_version: { type: 'number', description: 'Ожидаемая версия для optimistic locking. Если текущая версия не совпадает, вернётся ошибка конфликта.' },
             title: { type: 'string', description: 'Новый заголовок' },
             content: { type: 'string', description: 'Новое содержимое' },
             domain: { type: 'string', description: 'Новый домен' },
@@ -283,10 +289,26 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
           if (!parsed.success) {
             return { content: [{ type: 'text', text: `❌ Ошибка валидации: ${formatZodError(parsed.error)}` }], isError: true };
           }
-          const params = parsed.data;
-          const updated = await memoryManager.update(params);
-          if (!updated) return { content: [{ type: 'text', text: `❌ Запись с ID "${params.id}" не найдена.` }] };
-          return { content: [{ type: 'text', text: `✅ Запись обновлена!\n\n**ID**: ${updated.id}\n**Заголовок**: ${updated.title}\n**Статус**: ${updated.status}` }] };
+          const { expected_version, ...rest } = parsed.data;
+          const params: UpdateParams = { ...rest, expectedVersion: expected_version };
+          const result = await memoryManager.update(params);
+
+          // Check for conflict
+          if (result && 'conflict' in result) {
+            const conflict = result as ConflictError;
+            return {
+              content: [{
+                type: 'text',
+                text: `⚠️ Конфликт версий!\n\n${conflict.message}\n\n**Текущая версия**: ${conflict.currentVersion}\n**Текущий заголовок**: ${conflict.currentEntry.title}\n\nПрочитайте запись заново и повторите обновление с актуальной версией.`
+              }],
+              isError: true,
+            };
+          }
+
+          if (!result) return { content: [{ type: 'text', text: `❌ Запись с ID "${parsed.data.id}" не найдена.` }] };
+          const entry = result as MemoryEntry;
+          const versionInfo = entry.currentVersion !== undefined ? `\n**Версия**: ${entry.currentVersion}` : '';
+          return { content: [{ type: 'text', text: `✅ Запись обновлена!\n\n**ID**: ${entry.id}\n**Заголовок**: ${entry.title}\n**Статус**: ${entry.status}${versionInfo}` }] };
         }
 
         case 'memory_delete': {
@@ -317,9 +339,9 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
         case 'memory_unarchive': {
           const id = args?.id as string;
           if (!id) return { content: [{ type: 'text', text: '❌ Укажите ID записи.' }], isError: true };
-          const updated = await memoryManager.update({ id, status: 'active' });
-          if (!updated) return { content: [{ type: 'text', text: `❌ Запись "${id}" не найдена.` }] };
-          return { content: [{ type: 'text', text: `📤 Разархивировано!\n\n**ID**: ${updated.id}\n**Заголовок**: ${updated.title}` }] };
+          const unarchiveResult = await memoryManager.update({ id, status: 'active' });
+          if (!unarchiveResult || ('conflict' in unarchiveResult)) return { content: [{ type: 'text', text: `❌ Запись "${id}" не найдена.` }] };
+          return { content: [{ type: 'text', text: `📤 Разархивировано!\n\n**ID**: ${unarchiveResult.id}\n**Заголовок**: ${unarchiveResult.title}` }] };
         }
 
         case 'memory_pin': {
@@ -485,6 +507,58 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
       return { contents: [{ uri, mimeType: 'text/markdown', text }] };
     }
     throw new Error(`Unknown resource: ${uri}`);
+  });
+
+  // === Prompts ===
+
+  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    return {
+      prompts: [{
+        name: 'auto-context',
+        description: 'Returns relevant team memory entries for the current session. Use at session start for automatic context.',
+        arguments: [
+          { name: 'project_id', description: 'Project ID', required: false },
+          { name: 'context', description: 'Current task description for semantic matching', required: false },
+          { name: 'limit', description: 'Max entries to return (default 10)', required: false },
+        ],
+      }],
+    };
+  });
+
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const { name, arguments: promptArgs } = request.params;
+
+    if (name !== 'auto-context') {
+      throw new Error(`Unknown prompt: ${name}`);
+    }
+
+    try {
+      const projectId = promptArgs?.project_id;
+      const context = promptArgs?.context;
+      const parsed = promptArgs?.limit ? parseInt(promptArgs.limit, 10) : 10;
+      const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+
+      const result = await buildAutoContext(memoryManager, {
+        projectId,
+        context,
+        limit,
+      });
+
+      return {
+        messages: [{
+          role: 'user',
+          content: { type: 'text', text: result.formatted },
+        }],
+      };
+    } catch (err) {
+      logger.error({ err }, 'Auto-context prompt failed');
+      return {
+        messages: [{
+          role: 'user',
+          content: { type: 'text', text: 'Failed to load team memory context.' },
+        }],
+      };
+    }
   });
 }
 

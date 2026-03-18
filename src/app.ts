@@ -96,9 +96,33 @@ async function main(): Promise<void> {
   wsServer.attachToServer(server);
   webServer.setWsServer(wsServer);
 
+  // Embedding provider (optional)
+  // Set MEMORY_EMBEDDING_PROVIDER=gemini + GEMINI_API_KEY for Gemini API
+  // Set MEMORY_EMBEDDING_PROVIDER=local for local ONNX model
+  if (config.embeddingProvider === 'gemini' && config.geminiApiKey) {
+    const { GeminiEmbeddingProvider } = await import('./embedding/gemini.js');
+    const embProvider = new GeminiEmbeddingProvider(config.geminiApiKey);
+    await embProvider.initialize();
+    if (embProvider.isReady()) {
+      memoryManager.setEmbeddingProvider(embProvider);
+      memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
+    }
+  } else if (config.embeddingProvider === 'local') {
+    const { LocalEmbeddingProvider } = await import('./embedding/local.js');
+    const embProvider = new LocalEmbeddingProvider(config.embeddingModelDir);
+    await embProvider.initialize();
+    if (embProvider.isReady()) {
+      memoryManager.setEmbeddingProvider(embProvider);
+      memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
+    }
+  }
+
   // Auto-archive
   if (config.autoArchiveEnabled) {
-    memoryManager.startAutoArchive(config.autoArchiveDays);
+    const decayConfig = config.decayThreshold !== undefined
+      ? { threshold: config.decayThreshold, decayDays: config.decayDays, weights: config.decayWeights }
+      : undefined;
+    memoryManager.startAutoArchive(config.autoArchiveDays, undefined, decayConfig);
   }
 
   // Start listening

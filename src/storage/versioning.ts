@@ -27,8 +27,8 @@ export class VersionManager {
         SELECT pg_advisory_xact_lock(hashtext($1))
       )
       INSERT INTO entry_versions (entry_id, version, title, content, domain, category, tags, priority, status, author)
-      SELECT $1, COALESCE(MAX(version), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9
-      FROM entry_versions WHERE entry_id = $1
+      SELECT $1::uuid, COALESCE(MAX(version), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9
+      FROM entry_versions WHERE entry_id = $1::uuid
       RETURNING version`,
       [
         entry.id, entry.title, entry.content,
@@ -42,7 +42,7 @@ export class VersionManager {
 
   async getVersions(entryId: string): Promise<EntryVersion[]> {
     const { rows } = await this.pool.query(
-      `SELECT * FROM entry_versions WHERE entry_id = $1 ORDER BY version DESC`,
+      `SELECT * FROM entry_versions WHERE entry_id = $1::uuid ORDER BY version DESC`,
       [entryId]
     );
     return rows.map((row) => this.rowToVersion(row));
@@ -50,10 +50,18 @@ export class VersionManager {
 
   async getVersion(entryId: string, version: number): Promise<EntryVersion | null> {
     const { rows } = await this.pool.query(
-      `SELECT * FROM entry_versions WHERE entry_id = $1 AND version = $2`,
+      `SELECT * FROM entry_versions WHERE entry_id = $1::uuid AND version = $2`,
       [entryId, version]
     );
     return rows.length > 0 ? this.rowToVersion(rows[0]) : null;
+  }
+
+  async getCurrentVersion(entryId: string): Promise<number | null> {
+    const { rows } = await this.pool.query(
+      `SELECT MAX(version) as max FROM entry_versions WHERE entry_id = $1::uuid`,
+      [entryId]
+    );
+    return rows[0]?.max ?? null;
   }
 
   private rowToVersion(row: Record<string, unknown>): EntryVersion {

@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: team_memory
       POSTGRES_USER: ${POSTGRES_USER:-memory}
@@ -26,6 +26,14 @@ services:
       MEMORY_PORT: "3846"
       MEMORY_API_TOKEN: ${MEMORY_API_TOKEN:-}
       MEMORY_CORS_ORIGIN: ${MEMORY_CORS_ORIGIN:-*}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      MEMORY_AUTO_ARCHIVE: ${MEMORY_AUTO_ARCHIVE:-true}
+      MEMORY_AUTO_ARCHIVE_DAYS: ${MEMORY_AUTO_ARCHIVE_DAYS:-14}
+      MEMORY_DECAY_THRESHOLD: ${MEMORY_DECAY_THRESHOLD:-}
+      MEMORY_DECAY_DAYS: ${MEMORY_DECAY_DAYS:-30}
+      MEMORY_DECAY_WEIGHTS: ${MEMORY_DECAY_WEIGHTS:-0.3,0.2,0.3,0.2}
+      MEMORY_EMBEDDING_PROVIDER: ${MEMORY_EMBEDDING_PROVIDER:-}
+      MEMORY_EMBEDDING_MODEL_DIR: ${MEMORY_EMBEDDING_MODEL_DIR:-data/models}
     ports:
       - "3846:3846"
     healthcheck:

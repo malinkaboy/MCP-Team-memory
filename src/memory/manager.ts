@@ -4,6 +4,7 @@ import { AuditLogger } from '../storage/audit.js';
 import { VersionManager } from '../storage/versioning.js';
 import { DEFAULT_PROJECT_ID } from './types.js';
 import logger from '../logger.js';
+import type { EmbeddingProvider } from '../embedding/provider.js';
 import type {
   MemoryEntry,
   Project,
@@ -16,7 +17,8 @@ import type {
   SyncResult,
   MemoryStats,
   WSEvent,
-  WSEventType
+  WSEventType,
+  ConflictError
 } from './types.js';
 
 type EventListener = (event: WSEvent) => void;
@@ -25,6 +27,7 @@ export class MemoryManager {
   private storage: PgStorage;
   private auditLogger: AuditLogger | null = null;
   private versionManager: VersionManager | null = null;
+  private embeddingProvider: EmbeddingProvider | null = null;
   private listeners: Set<EventListener> = new Set();
   private autoArchiveInterval: NodeJS.Timeout | null = null;
 
@@ -41,6 +44,7 @@ export class MemoryManager {
 
   async close(): Promise<void> {
     this.stopAutoArchive();
+    await this.embeddingProvider?.close?.();
     await this.storage.close();
   }
 
@@ -93,6 +97,22 @@ export class MemoryManager {
     const { category = 'all', domain, search, limit = 50, status, tags } = params;
 
     if (search) {
+      // Use hybrid search when embedding provider is available
+      if (this.embeddingProvider?.isReady()) {
+        try {
+          const queryEmbedding = await this.embeddingProvider.embed(search, 'query');
+          return this.storage.hybridSearch(projectId, search, queryEmbedding, {
+            category: category === 'all' ? undefined : category,
+            domain,
+            status,
+            tags,
+            limit,
+          });
+        } catch (err) {
+          logger.warn({ err }, 'Hybrid search failed, falling back to FTS');
+        }
+      }
+
       return this.storage.search(projectId, search, {
         category: category === 'all' ? undefined : category,
         domain,
@@ -140,29 +160,48 @@ export class MemoryManager {
       actor: created.author,
       changes: { title: created.title, category: created.category },
     }).catch(err => logger.error({ err }, 'Audit log failed'));
+
+    // Fire-and-forget: generate embedding for new entry
+    if (this.embeddingProvider?.isReady()) {
+      this.embeddingProvider.embed(`${created.title} ${created.content}`, 'document')
+        .then(emb => this.storage.saveEmbedding(created.id, emb))
+        .catch(err => logger.error({ err, entryId: created.id }, 'Embedding generation failed'));
+    }
+
     return created;
   }
 
-  async update(params: UpdateParams): Promise<MemoryEntry | null> {
-    const { id, ...updates } = params;
+  async update(params: UpdateParams): Promise<MemoryEntry | ConflictError | null> {
+    const { id, expectedVersion, ...updates } = params;
 
     const filteredUpdates = Object.fromEntries(
       Object.entries(updates).filter(([_, value]) => value !== undefined)
     ) as Partial<MemoryEntry>;
 
-    // Save current version before updating
+    // Save current version BEFORE the update attempt.
+    // Fetch pre-update state, but commit to entry_versions only on success.
+    let preUpdateEntry: MemoryEntry | undefined;
     if (this.versionManager) {
-      const current = await this.storage.getById(id);
-      if (current) {
-        await this.versionManager.saveVersion(current).catch(err =>
+      preUpdateEntry = await this.storage.getById(id);
+    }
+
+    const result = await this.storage.update(id, filteredUpdates, expectedVersion);
+
+    // Check for conflict — don't save version on conflict
+    if (result && 'conflict' in result && result.conflict) {
+      return result as ConflictError;
+    }
+
+    const updated = result as MemoryEntry | undefined;
+
+    if (updated) {
+      // Save version snapshot only AFTER successful update
+      if (this.versionManager && preUpdateEntry) {
+        await this.versionManager.saveVersion(preUpdateEntry).catch(err =>
           logger.error({ err }, 'Version save failed')
         );
       }
-    }
 
-    const updated = await this.storage.update(id, filteredUpdates);
-
-    if (updated) {
       this.emit('memory:updated', updated);
       this.auditLogger?.log({
         entryId: updated.id,
@@ -170,9 +209,17 @@ export class MemoryManager {
         action: 'update',
         actor: updated.author,
         changes: Object.fromEntries(
-          Object.entries(params).filter(([k]) => k !== 'id')
+          Object.entries(params).filter(([k]) => k !== 'id' && k !== 'expectedVersion')
         ),
       }).catch(err => logger.error({ err }, 'Audit log failed'));
+
+      // Fire-and-forget: regenerate embedding if content or title changed
+      if (this.embeddingProvider?.isReady() && (params.title || params.content)) {
+        this.embeddingProvider.embed(`${updated.title} ${updated.content}`, 'document')
+          .then(emb => this.storage.saveEmbedding(updated.id, emb))
+          .catch(err => logger.error({ err, entryId: updated.id }, 'Embedding regeneration failed'));
+      }
+
       return updated;
     }
 
@@ -214,16 +261,16 @@ export class MemoryManager {
   }
 
   async pin(id: string, pinned: boolean = true): Promise<MemoryEntry | null> {
-    const updated = await this.storage.update(id, { pinned });
-    if (updated) {
-      this.emit('memory:updated', updated);
+    const result = await this.storage.update(id, { pinned });
+    if (result && !('conflict' in result)) {
+      this.emit('memory:updated', result);
       this.auditLogger?.log({
-        entryId: updated.id,
-        projectId: updated.projectId,
+        entryId: result.id,
+        projectId: result.projectId,
         action: pinned ? 'pin' : 'unpin',
-        actor: updated.author,
+        actor: result.author,
       }).catch(err => logger.error({ err }, 'Audit log failed'));
-      return updated;
+      return result;
     }
     return null;
   }
@@ -234,6 +281,102 @@ export class MemoryManager {
 
   getVersionManager(): VersionManager | null {
     return this.versionManager;
+  }
+
+  // === Embedding ===
+
+  setEmbeddingProvider(provider: EmbeddingProvider): void {
+    this.embeddingProvider = provider;
+    logger.info('Embedding provider set');
+  }
+
+  getEmbeddingProvider(): EmbeddingProvider | null {
+    return this.embeddingProvider;
+  }
+
+  async getEmbeddingStats(): Promise<{
+    provider: string | null;
+    model: string | null;
+    isReady: boolean;
+    dimensions: number | null;
+    entriesEmbedded: number;
+    entriesTotal: number;
+  }> {
+    const p = this.embeddingProvider;
+    const embStats = await this.storage.countEmbeddingStats();
+    return {
+      provider: p?.providerType ?? null,
+      model: p?.modelName ?? null,
+      isReady: p?.isReady() ?? false,
+      dimensions: p?.dimensions ?? null,
+      entriesEmbedded: embStats.embedded,
+      entriesTotal: embStats.total,
+    };
+  }
+
+  /** Backfill embeddings for entries that don't have one yet (loops until all done) */
+  async backfillEmbeddings(batchSize: number = 50): Promise<number> {
+    if (!this.embeddingProvider?.isReady()) return 0;
+
+    const provider = this.embeddingProvider;
+    const hasBatch = 'embedBatch' in provider && typeof (provider as any).embedBatch === 'function';
+    let totalCount = 0;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const entries = await this.storage.getEntriesWithoutEmbedding(batchSize);
+      if (entries.length === 0) break;
+
+      let batchCount = 0;
+
+      if (hasBatch) {
+        // Batch mode: one API call per batch (much more efficient)
+        try {
+          const texts = entries.map(e => `${e.title} ${e.content}`);
+          const embeddings = await (provider as any).embedBatch(texts, 'document') as number[][];
+          for (let i = 0; i < entries.length; i++) {
+            await this.storage.saveEmbedding(entries[i].id, embeddings[i]);
+            batchCount++;
+          }
+        } catch (err) {
+          logger.error({ err }, 'Embedding batch backfill failed, falling back to sequential');
+          // Fallback to sequential on batch failure
+          for (const entry of entries) {
+            try {
+              const text = `${entry.title} ${entry.content}`;
+              const embedding = await provider.embed(text, 'document');
+              await this.storage.saveEmbedding(entry.id, embedding);
+              batchCount++;
+            } catch (seqErr) {
+              logger.error({ err: seqErr, entryId: entry.id }, 'Embedding backfill failed for entry');
+            }
+          }
+        }
+      } else {
+        // Sequential mode: one API call per entry
+        for (const entry of entries) {
+          try {
+            const text = `${entry.title} ${entry.content}`;
+            const embedding = await provider.embed(text, 'document');
+            await this.storage.saveEmbedding(entry.id, embedding);
+            batchCount++;
+          } catch (err) {
+            logger.error({ err, entryId: entry.id }, 'Embedding backfill failed for entry');
+          }
+        }
+      }
+
+      totalCount += batchCount;
+      logger.info({ batchCount, totalCount, batchFailed: entries.length - batchCount }, 'Backfill batch completed');
+
+      // If nothing succeeded in this batch, stop to avoid infinite loop
+      if (batchCount === 0) break;
+    }
+
+    if (totalCount > 0) {
+      logger.info({ totalCount }, 'Backfill complete');
+    }
+    return totalCount;
   }
 
   // === Sync ===
@@ -369,18 +512,38 @@ export class MemoryManager {
     return archived;
   }
 
-  startAutoArchive(days: number = 14, checkIntervalMs: number = 24 * 60 * 60 * 1000): void {
+  async autoArchiveByScore(
+    threshold: number,
+    decayDays: number,
+    weights: [number, number, number, number]
+  ): Promise<number> {
+    const archived = await this.storage.archiveByScore(threshold, decayDays, weights);
+    if (archived > 0) {
+      logger.info({ archived, threshold, decayDays }, 'Auto-archived entries by score');
+    }
+    return archived;
+  }
+
+  startAutoArchive(
+    days: number = 14,
+    checkIntervalMs: number = 24 * 60 * 60 * 1000,
+    decayConfig?: { threshold: number; decayDays: number; weights: [number, number, number, number] }
+  ): void {
     if (this.autoArchiveInterval) {
       clearInterval(this.autoArchiveInterval);
     }
 
-    this.autoArchiveOldEntries(days).catch(err =>
+    const archiveTask = decayConfig
+      ? () => this.autoArchiveByScore(decayConfig.threshold, decayConfig.decayDays, decayConfig.weights)
+      : () => this.autoArchiveOldEntries(days);
+
+    archiveTask().catch(err =>
       logger.error({ err }, 'Initial auto-archive failed')
     );
 
     this.autoArchiveInterval = setInterval(async () => {
       try {
-        await this.autoArchiveOldEntries(days);
+        await archiveTask();
       } catch (error) {
         logger.error({ err: error }, 'Auto archive failed');
       }

@@ -4,7 +4,8 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { Migrator } from './migrator.js';
 import { DEFAULT_PROJECT_ID } from '../memory/types.js';
-import type { MemoryEntry, Project, ReadParams } from '../memory/types.js';
+import type { MemoryEntry, Project, ReadParams, ConflictError } from '../memory/types.js';
+import { buildArchiveByScoreQuery } from '../memory/decay.js';
 import { toISOString } from './utils.js';
 import logger from '../logger.js';
 
@@ -33,6 +34,8 @@ function rowToEntry(row: Record<string, unknown>): MemoryEntry {
     createdAt: toISOString(row.created_at),
     updatedAt: toISOString(row.updated_at),
     relatedIds: (row.related_ids as string[]) || [],
+    readCount: (row.read_count as number) ?? 0,
+    lastReadAt: row.last_read_at ? toISOString(row.last_read_at) : undefined,
   };
 }
 
@@ -200,12 +203,18 @@ export class PgStorage {
        ORDER BY updated_at DESC LIMIT $${paramIdx}`,
       values
     );
-    return rows.map(rowToEntry);
+    const allEntries = rows.map(rowToEntry);
+    this.trackReads(allEntries.map(e => e.id));
+    return this.attachVersions(allEntries);
   }
 
   async getById(id: string): Promise<MemoryEntry | undefined> {
     const { rows } = await this.pool.query('SELECT * FROM entries WHERE id = $1', [id]);
-    return rows.length > 0 ? rowToEntry(rows[0]) : undefined;
+    if (rows.length === 0) return undefined;
+    const entry = rowToEntry(rows[0]);
+    const [withVersion] = await this.attachVersions([entry]);
+    this.trackReads([entry.id]);
+    return withVersion;
   }
 
   async search(projectId: string, query: string, filters?: {
@@ -249,7 +258,9 @@ export class PgStorage {
        ORDER BY updated_at DESC LIMIT $${paramIdx}`,
       values
     );
-    return rows.map(rowToEntry);
+    const entries = rows.map(rowToEntry);
+    this.trackReads(entries.map(e => e.id));
+    return this.attachVersions(entries);
   }
 
   async add(entry: MemoryEntry): Promise<MemoryEntry> {
@@ -277,7 +288,7 @@ export class PgStorage {
     return rowToEntry(rows[0]);
   }
 
-  async update(id: string, updates: Partial<MemoryEntry>): Promise<MemoryEntry | undefined> {
+  async update(id: string, updates: Partial<MemoryEntry>, expectedVersion?: number): Promise<MemoryEntry | ConflictError | undefined> {
     const setClauses: string[] = [];
     const values: unknown[] = [];
     let paramIdx = 1;
@@ -311,14 +322,74 @@ export class PgStorage {
       values.push(updates.relatedIds);
     }
 
-    if (setClauses.length === 0) return this.getById(id);
+    if (setClauses.length === 0) {
+      const entry = await this.getById(id);
+      return entry;
+    }
 
+    // If expectedVersion is provided, use atomic transaction with row lock
+    if (expectedVersion !== undefined) {
+      const client = await this.pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Lock the row
+        const { rows: lockRows } = await client.query(
+          'SELECT * FROM entries WHERE id = $1 FOR UPDATE',
+          [id]
+        );
+        if (lockRows.length === 0) {
+          await client.query('ROLLBACK');
+          return undefined;
+        }
+
+        // Check current version
+        const { rows: versionRows } = await client.query(
+          'SELECT MAX(version) as max FROM entry_versions WHERE entry_id = $1::uuid',
+          [id]
+        );
+        const currentVersion = versionRows[0]?.max ?? 0;
+
+        if (currentVersion !== expectedVersion) {
+          await client.query('ROLLBACK');
+          const currentEntry = rowToEntry(lockRows[0]);
+          return {
+            conflict: true,
+            currentVersion,
+            currentEntry,
+            message: `Entry was modified (expected version ${expectedVersion}, current ${currentVersion})`,
+          };
+        }
+
+        // Version matches — perform update
+        values.push(id);
+        const { rows } = await client.query(
+          `UPDATE entries SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
+          values
+        );
+        await client.query('COMMIT');
+        if (rows.length === 0) return undefined;
+        const entry = rowToEntry(rows[0]);
+        const [withVersion] = await this.attachVersions([entry]);
+        return withVersion;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+
+    // No expectedVersion — original behavior (last-write-wins)
     values.push(id);
     const { rows } = await this.pool.query(
       `UPDATE entries SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
       values
     );
-    return rows.length > 0 ? rowToEntry(rows[0]) : undefined;
+    if (rows.length === 0) return undefined;
+    const entry = rowToEntry(rows[0]);
+    const [withVersion] = await this.attachVersions([entry]);
+    return withVersion;
   }
 
   async delete(id: string): Promise<boolean> {
@@ -327,11 +398,14 @@ export class PgStorage {
   }
 
   async archive(id: string): Promise<MemoryEntry | undefined> {
-    return this.update(id, { status: 'archived' });
+    const result = await this.update(id, { status: 'archived' });
+    // archive() never uses expectedVersion, so ConflictError is impossible
+    return result as MemoryEntry | undefined;
   }
 
   async unarchive(id: string): Promise<MemoryEntry | undefined> {
-    return this.update(id, { status: 'active' });
+    const result = await this.update(id, { status: 'active' });
+    return result as MemoryEntry | undefined;
   }
 
   async getChangesSince(projectId: string, since: string): Promise<MemoryEntry[]> {
@@ -339,7 +413,8 @@ export class PgStorage {
       `SELECT * FROM entries WHERE project_id = $1 AND updated_at > $2 ORDER BY updated_at DESC`,
       [projectId, since]
     );
-    return rows.map(rowToEntry);
+    const entries = rows.map(rowToEntry);
+    return this.attachVersions(entries);
   }
 
   async getStats(projectId: string): Promise<{
@@ -420,5 +495,142 @@ export class PgStorage {
       [projectId]
     );
     return rows[0]?.last ? toISOString(rows[0].last) : new Date().toISOString();
+  }
+
+  /** Hybrid search: combines full-text search with vector similarity */
+  async hybridSearch(
+    projectId: string,
+    query: string,
+    queryEmbedding?: number[],
+    filters?: {
+      category?: string;
+      domain?: string;
+      status?: string;
+      tags?: string[];
+      limit?: number;
+    }
+  ): Promise<MemoryEntry[]> {
+    // Fall back to regular search when no embedding available
+    if (!queryEmbedding) {
+      return this.search(projectId, query, filters);
+    }
+
+    const conditions: string[] = ['project_id = $1'];
+    const values: unknown[] = [projectId];
+    let paramIdx = 2;
+
+    // Text + vector match condition
+    conditions.push(
+      `(search_vector @@ plainto_tsquery('simple', $${paramIdx}) OR embedding <=> $${paramIdx + 1}::vector < 0.7)`
+    );
+    values.push(query, `[${queryEmbedding.join(',')}]`);
+    const textParamIdx = paramIdx;
+    const vectorParamIdx = paramIdx + 1;
+    paramIdx += 2;
+
+    if (filters?.category && filters.category !== 'all') {
+      conditions.push(`category = $${paramIdx++}`);
+      values.push(filters.category);
+    }
+    if (filters?.domain) {
+      conditions.push(`domain = $${paramIdx++}`);
+      values.push(filters.domain);
+    }
+    if (filters?.status) {
+      conditions.push(`status = $${paramIdx++}`);
+      values.push(filters.status);
+    }
+    if (filters?.tags && filters.tags.length > 0) {
+      conditions.push(`tags && $${paramIdx++}`);
+      values.push(filters.tags);
+    }
+
+    const limit = filters?.limit || 50;
+    values.push(limit);
+
+    const sql = `
+      SELECT *,
+        ts_rank(search_vector, plainto_tsquery('simple', $${textParamIdx})) AS text_score,
+        1 - (embedding <=> $${vectorParamIdx}::vector) AS vector_score
+      FROM entries
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY (
+        0.4 * COALESCE(ts_rank(search_vector, plainto_tsquery('simple', $${textParamIdx})), 0)
+        + 0.6 * COALESCE(1 - (embedding <=> $${vectorParamIdx}::vector), 0)
+      ) DESC
+      LIMIT $${paramIdx}
+    `;
+
+    const { rows } = await this.pool.query(sql, values);
+    const entries = rows.map(rowToEntry);
+    this.trackReads(entries.map(e => e.id));
+    return this.attachVersions(entries);
+  }
+
+  /** Save embedding vector for an entry */
+  async saveEmbedding(id: string, embedding: number[]): Promise<void> {
+    await this.pool.query(
+      `UPDATE entries SET embedding = $1::vector WHERE id = $2`,
+      [`[${embedding.join(',')}]`, id]
+    );
+  }
+
+  /** Get entries that have no embedding yet (for backfill) */
+  async getEntriesWithoutEmbedding(limit: number = 50): Promise<MemoryEntry[]> {
+    const { rows } = await this.pool.query(
+      `SELECT * FROM entries WHERE embedding IS NULL ORDER BY updated_at DESC LIMIT $1`,
+      [limit]
+    );
+    return rows.map(rowToEntry);
+  }
+
+  /** Count active entries that have embeddings and total active entries */
+  async countEmbeddingStats(): Promise<{ embedded: number; total: number }> {
+    const { rows } = await this.pool.query(
+      `SELECT
+         count(*) FILTER (WHERE embedding IS NOT NULL)::int as embedded,
+         count(*)::int as total
+       FROM entries`
+    );
+    return { embedded: rows[0].embedded, total: rows[0].total };
+  }
+
+  /** Fire-and-forget: increment read_count for returned entry IDs */
+  private trackReads(ids: string[]): void {
+    if (ids.length === 0) return;
+    this.pool.query(
+      `UPDATE entries SET read_count = read_count + 1, last_read_at = NOW() WHERE id = ANY($1)`,
+      [ids]
+    ).catch(err => logger.error({ err }, 'Read tracking failed'));
+  }
+
+  /** Archive entries whose importance score is below the threshold */
+  async archiveByScore(
+    threshold: number,
+    decayDays: number,
+    weights: [number, number, number, number]
+  ): Promise<number> {
+    const { sql, params } = buildArchiveByScoreQuery(threshold, decayDays, weights);
+    const result = await this.pool.query(sql, params);
+    return result.rowCount ?? 0;
+  }
+
+  /** Attach currentVersion from entry_versions to entries */
+  private async attachVersions(entries: MemoryEntry[]): Promise<MemoryEntry[]> {
+    if (entries.length === 0) return entries;
+    const ids = entries.map(e => e.id);
+    const { rows } = await this.pool.query(
+      `SELECT entry_id, MAX(version) as max_version FROM entry_versions WHERE entry_id = ANY($1::uuid[]) GROUP BY entry_id`,
+      [ids]
+    );
+    const versionMap = new Map(rows.map((r: any) => [r.entry_id, r.max_version]));
+    return entries.map(e => ({ ...e, currentVersion: versionMap.get(e.id) ?? undefined }));
+  }
+
+  /** @internal Test-only factory that injects a mock pool */
+  static __createForTest(pool: pg.Pool): PgStorage {
+    const instance = Object.create(PgStorage.prototype) as PgStorage;
+    instance['pool'] = pool;
+    return instance;
   }
 }
