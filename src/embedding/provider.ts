@@ -13,6 +13,12 @@ export interface EmbeddingProvider {
   /** Generate embedding vector for the given text */
   embed(text: string, taskType?: EmbedTaskType): Promise<number[]>;
 
+  /**
+   * Batch embed multiple texts. Gemini provider uses a true batch API call (up to 100 texts).
+   * Local provider falls back to sequential embed() calls.
+   */
+  embedBatch?(texts: string[], taskType?: EmbedTaskType): Promise<number[][]>;
+
   /** Whether the provider is initialized and ready to generate embeddings */
   isReady(): boolean;
 

@@ -16,5 +16,5 @@
     "sourceMap": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/storage/json-storage.ts"]
+  "exclude": ["node_modules", "dist", "src/storage/json-storage.ts", "src/__tests__"]
 }

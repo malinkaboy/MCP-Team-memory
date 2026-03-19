@@ -1,9 +1,24 @@
 {
-  "name": "team-memory-mcp",
-  "version": "2.0.0",
+  "name": "@anthropic-team/team-memory-mcp",
+  "version": "2.1.0",
   "description": "MCP Server for team memory - shared knowledge base for Claude Code agents (PostgreSQL, multi-project)",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "team-memory-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anthropic-team/team-memory-mcp"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc && npm run copy-static && npm run copy-sql && npm run copy-migrations",
     "copy-static": "cpy \"src/web/public/**/*\" dist/web/public/",

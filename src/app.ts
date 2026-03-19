@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   logger.info({ transport: 'http', database: config.databaseUrl.replace(/\/\/.*:.*@/, '//***:***@'), port: config.port }, 'Team Memory MCP Server v2 starting');
 
   // Initialize storage
-  const storage = new PgStorage(config.databaseUrl);
+  const storage = new PgStorage(config.databaseUrl, config.ftsLanguage);
   const auditLogger = new AuditLogger(storage.getPool());
   const versionManager = new VersionManager(storage.getPool());
   const memoryManager = new MemoryManager(storage, auditLogger, versionManager);
@@ -104,7 +104,7 @@ async function main(): Promise<void> {
     const embProvider = new GeminiEmbeddingProvider(config.geminiApiKey);
     await embProvider.initialize();
     if (embProvider.isReady()) {
-      memoryManager.setEmbeddingProvider(embProvider);
+      await memoryManager.setEmbeddingProvider(embProvider);
       memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
     }
   } else if (config.embeddingProvider === 'local') {
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
     const embProvider = new LocalEmbeddingProvider(config.embeddingModelDir);
     await embProvider.initialize();
     if (embProvider.isReady()) {
-      memoryManager.setEmbeddingProvider(embProvider);
+      await memoryManager.setEmbeddingProvider(embProvider);
       memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
     }
   }

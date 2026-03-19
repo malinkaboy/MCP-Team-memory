@@ -36,6 +36,7 @@ import {
   AuditParamsSchema,
   HistoryParamsSchema,
   ExportParamsSchema,
+  CrossSearchParamsSchema,
   formatZodError,
 } from './memory/validation.js';
 import { exportEntries, type ExportFormat } from './export/exporter.js';
@@ -62,7 +63,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
             project_id: { type: 'string', description: 'ID проекта (по умолчанию "default")' },
             category: {
               type: 'string',
-              enum: ['architecture', 'tasks', 'decisions', 'issues', 'progress', 'all'],
+              enum: ['architecture', 'tasks', 'decisions', 'issues', 'progress', 'conventions', 'all'],
               description: 'Категория памяти для чтения'
             },
             domain: { type: 'string', description: 'Фильтр по домену (backend, frontend, infrastructure, и т.д.)' },
@@ -85,7 +86,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
             project_id: { type: 'string', description: 'ID проекта (по умолчанию "default")' },
             category: {
               type: 'string',
-              enum: ['architecture', 'tasks', 'decisions', 'issues', 'progress'],
+              enum: ['architecture', 'tasks', 'decisions', 'issues', 'progress', 'conventions'],
               description: 'Категория записи'
             },
             domain: { type: 'string', description: 'Домен: backend, frontend, infrastructure, devops, database, testing' },
@@ -215,9 +216,59 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
           properties: {
             project_id: { type: 'string', description: 'ID проекта' },
             format: { type: 'string', enum: ['markdown', 'json'], default: 'markdown', description: 'Формат экспорта' },
-            category: { type: 'string', enum: ['architecture', 'tasks', 'decisions', 'issues', 'progress', 'all'], description: 'Категория' },
+            category: { type: 'string', enum: ['architecture', 'tasks', 'decisions', 'issues', 'progress', 'conventions', 'all'], description: 'Категория' },
           },
         },
+      },
+      {
+        name: 'memory_conventions',
+        description: 'Управление конвенциями проекта (стиль кода, паттерны, правила). Используйте для хранения .editorconfig-подобных правил для AI-агентов.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: {
+              type: 'string',
+              enum: ['list', 'add', 'remove'],
+              description: 'Действие: list — показать конвенции, add — добавить, remove — удалить'
+            },
+            project_id: { type: 'string', description: 'ID проекта' },
+            title: { type: 'string', description: 'Название конвенции (для add)' },
+            content: { type: 'string', description: 'Описание конвенции (для add)' },
+            domain: { type: 'string', description: 'Домен конвенции (для add)' },
+            tags: { type: 'array', items: { type: 'string' }, description: 'Теги (для add)' },
+            id: { type: 'string', description: 'ID конвенции (для remove)' },
+          },
+          required: ['action']
+        }
+      },
+      {
+        name: 'memory_cross_search',
+        description: 'Поиск паттернов и решений МЕЖДУ проектами. Находит релевантные записи из всех проектов.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Поисковый запрос' },
+            category: {
+              type: 'string',
+              enum: ['architecture', 'tasks', 'decisions', 'issues', 'progress', 'conventions', 'all'],
+              description: 'Фильтр по категории'
+            },
+            domain: { type: 'string', description: 'Фильтр по домену' },
+            exclude_project_id: { type: 'string', description: 'Исключить этот проект из поиска (обычно текущий)' },
+            limit: { type: 'number', default: 20, description: 'Макс. результатов' },
+          },
+          required: ['query']
+        }
+      },
+      {
+        name: 'memory_onboard',
+        description: 'Генерирует полную сводку проекта для нового агента/члена команды: конвенции, архитектура, решения, задачи, проблемы, стек. Один вызов вместо десяти memory_read.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project_id: { type: 'string', description: 'ID проекта (по умолчанию "default")' },
+          },
+        }
       }
     ];
     return { tools };
@@ -466,6 +517,88 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
           return { content: [{ type: 'text', text: exported }] };
         }
 
+        case 'memory_cross_search': {
+          const parsed = CrossSearchParamsSchema.safeParse(args);
+          if (!parsed.success) {
+            return { content: [{ type: 'text', text: `❌ Ошибка валидации: ${formatZodError(parsed.error)}` }], isError: true };
+          }
+          const { query: csQuery, category: csCat, domain: csDom, exclude_project_id: csExclude, limit: csLimit } = parsed.data;
+
+          const results = await memoryManager.crossSearch(csQuery, {
+            category: csCat === 'all' ? undefined : csCat,
+            domain: csDom,
+            excludeProjectId: csExclude,
+            limit: csLimit,
+          });
+
+          if (results.length === 0) {
+            return { content: [{ type: 'text', text: `Ничего не найдено по запросу "${csQuery}" во всех проектах.` }] };
+          }
+
+          const formatted = results.map(e => {
+            const pi = e.priority === 'critical' ? '🔴' : e.priority === 'high' ? '🟠' : e.priority === 'medium' ? '🟡' : '🟢';
+            return `## ${pi} ${e.title}\n**Проект**: ${e.projectName} | **Категория**: ${e.category}${e.domain ? ` | **Домен**: ${e.domain}` : ''}\n**Обновлено**: ${new Date(e.updatedAt).toLocaleString()}\n\n${e.content.length > 300 ? e.content.substring(0, 300) + '...' : e.content}\n\n---`;
+          }).join('\n\n');
+
+          return { content: [{ type: 'text', text: `# Cross-Project Search: "${csQuery}" (${results.length} результатов)\n\n${formatted}` }] };
+        }
+
+        case 'memory_conventions': {
+          const action = args?.action as string;
+          const projectId = (args?.project_id as string) || undefined;
+
+          if (action === 'list') {
+            const entries = await memoryManager.read({
+              projectId,
+              category: 'conventions',
+              status: 'active',
+              limit: 100,
+            });
+            if (entries.length === 0) {
+              return { content: [{ type: 'text', text: 'Конвенции не заданы. Используйте action: "add" для добавления.' }] };
+            }
+            const formatted = entries.map(e => {
+              const dom = e.domain ? ` [${e.domain}]` : '';
+              const tags = e.tags.length > 0 ? ` (${e.tags.join(', ')})` : '';
+              return `### 📏 ${e.title}${dom}${tags}\n${e.content}\n`;
+            }).join('\n---\n\n');
+            return { content: [{ type: 'text', text: `# Конвенции проекта (${entries.length})\n\n${formatted}` }] };
+          }
+
+          if (action === 'add') {
+            if (!args?.title || !args?.content) {
+              return { content: [{ type: 'text', text: '❌ Для добавления конвенции укажите title и content.' }], isError: true };
+            }
+            const entry = await memoryManager.write({
+              projectId,
+              category: 'conventions',
+              title: args?.title as string,
+              content: args?.content as string,
+              domain: args?.domain as string,
+              tags: (args?.tags as string[]) || [],
+              priority: 'high',
+              pinned: true,
+            });
+            return { content: [{ type: 'text', text: `✅ Конвенция добавлена!\n\n**ID**: ${entry.id}\n**Заголовок**: ${entry.title}\n📌 Автоматически закреплена` }] };
+          }
+
+          if (action === 'remove') {
+            if (!args?.id) {
+              return { content: [{ type: 'text', text: '❌ Для удаления конвенции укажите id.' }], isError: true };
+            }
+            const success = await memoryManager.delete({ id: args.id as string, archive: true });
+            return { content: [{ type: 'text', text: success ? `📦 Конвенция архивирована` : `❌ Не найдена` }] };
+          }
+
+          return { content: [{ type: 'text', text: '❌ Неизвестное действие. Используйте: list, add, remove' }], isError: true };
+        }
+
+        case 'memory_onboard': {
+          const projectId = args?.project_id as string | undefined;
+          const summary = await memoryManager.generateOnboarding(projectId);
+          return { content: [{ type: 'text', text: summary }] };
+        }
+
         default:
           return { content: [{ type: 'text', text: `❌ Неизвестный инструмент: ${name}` }], isError: true };
       }
@@ -481,7 +614,8 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
       { uri: 'memory://recent', name: 'Последние изменения', description: 'За 24 часа', mimeType: 'text/markdown' },
       { uri: 'memory://architecture', name: 'Архитектура', description: 'Архитектурные решения', mimeType: 'text/markdown' },
       { uri: 'memory://tasks', name: 'Задачи', description: 'Текущие задачи', mimeType: 'text/markdown' },
-      { uri: 'memory://issues', name: 'Проблемы', description: 'Известные проблемы', mimeType: 'text/markdown' }
+      { uri: 'memory://issues', name: 'Проблемы', description: 'Известные проблемы', mimeType: 'text/markdown' },
+      { uri: 'memory://conventions', name: 'Конвенции', description: 'Конвенции и правила проекта', mimeType: 'text/markdown' }
     ];
     return { resources };
   });
@@ -498,7 +632,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager): void {
         : 'Нет изменений за 24 часа.';
       return { contents: [{ uri, mimeType: 'text/markdown', text: `# Последние изменения\n\n${text}` }] };
     }
-    const VALID_CATEGORIES = ['architecture', 'tasks', 'decisions', 'issues', 'progress'];
+    const VALID_CATEGORIES = ['architecture', 'tasks', 'decisions', 'issues', 'progress', 'conventions'];
     const m = uri.match(/^memory:\/\/(\w+)$/);
     if (m && VALID_CATEGORIES.includes(m[1])) {
       const category = m[1] as Category;

@@ -50,6 +50,17 @@ export async function buildAutoContext(
     logger.error({ err }, 'Auto-recall: failed to fetch pinned entries');
   }
 
+  // 1.5. Convention entries — always included
+  try {
+    const conventions = await storage.getAll(
+      projectId || DEFAULT_PROJECT_ID,
+      { category: 'conventions', status: 'active', limit: 20 }
+    );
+    addUnique(conventions);
+  } catch (err) {
+    logger.error({ err }, 'Auto-recall: failed to fetch conventions');
+  }
+
   // 2. Recently updated entries
   try {
     const recent = await storage.getAll(

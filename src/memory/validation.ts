@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
 const CategoryEnum = z.enum([
-  'architecture', 'tasks', 'decisions', 'issues', 'progress',
+  'architecture', 'tasks', 'decisions', 'issues', 'progress', 'conventions',
 ]);
 
 const CategoryWithAllEnum = z.enum([
-  'architecture', 'tasks', 'decisions', 'issues', 'progress', 'all',
+  'architecture', 'tasks', 'decisions', 'issues', 'progress', 'conventions', 'all',
 ]);
 
 const PriorityEnum = z.enum(['low', 'medium', 'high', 'critical']);
@@ -98,6 +98,14 @@ export const ExportParamsSchema = z.object({
   project_id: z.string().optional(),
   format: z.enum(['markdown', 'json']).default('markdown'),
   category: CategoryWithAllEnum.default('all'),
+});
+
+export const CrossSearchParamsSchema = z.object({
+  query: z.string().min(1).max(500),
+  category: CategoryWithAllEnum.optional(),
+  domain: z.string().max(100).optional(),
+  exclude_project_id: z.string().optional(),
+  limit: z.number().int().min(1).default(20).transform(v => Math.min(v, 100)),
 });
 
 export function formatZodError(error: z.ZodError): string {

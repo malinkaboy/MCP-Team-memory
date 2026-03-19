@@ -25,7 +25,7 @@ if (config.transport === 'http') {
   logger.info({ transport: 'stdio', database: config.databaseUrl.replace(/\/\/.*:.*@/, '//***:***@') }, 'Team Memory MCP Server v2 starting');
 
   try {
-    const storage = new PgStorage(config.databaseUrl);
+    const storage = new PgStorage(config.databaseUrl, config.ftsLanguage);
     const { AuditLogger } = await import('./storage/audit.js');
     const auditLogger = new AuditLogger(storage.getPool());
     const { VersionManager } = await import('./storage/versioning.js');
@@ -42,7 +42,7 @@ if (config.transport === 'http') {
       const embProvider = new GeminiEmbeddingProvider(config.geminiApiKey);
       await embProvider.initialize();
       if (embProvider.isReady()) {
-        memoryManager.setEmbeddingProvider(embProvider);
+        await memoryManager.setEmbeddingProvider(embProvider);
         memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
       }
     } else if (config.embeddingProvider === 'local') {
@@ -50,7 +50,7 @@ if (config.transport === 'http') {
       const embProvider = new LocalEmbeddingProvider(config.embeddingModelDir);
       await embProvider.initialize();
       if (embProvider.isReady()) {
-        memoryManager.setEmbeddingProvider(embProvider);
+        await memoryManager.setEmbeddingProvider(embProvider);
         memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
       }
     }

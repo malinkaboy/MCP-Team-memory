@@ -4,7 +4,8 @@ export type Category =
   | 'tasks'         // Текущие задачи
   | 'decisions'     // Принятые решения
   | 'issues'        // Известные проблемы
-  | 'progress';     // Прогресс разработки
+  | 'progress'      // Прогресс разработки
+  | 'conventions';  // Конвенции проекта (стиль кода, паттерны, правила)
 
 // Приоритеты
 export type Priority = 'low' | 'medium' | 'high' | 'critical';
@@ -220,6 +221,11 @@ export const CATEGORY_INFO: Record<Category, { name: string; description: string
     name: 'Прогресс',
     description: 'Прогресс разработки, завершённые этапы',
     icon: '📈'
+  },
+  conventions: {
+    name: 'Конвенции',
+    description: 'Стиль кода, архитектурные паттерны, правила проекта',
+    icon: '📏'
   }
 };
 

@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS entries (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    category    TEXT NOT NULL CHECK (category IN ('architecture','tasks','decisions','issues','progress')),
+    category    TEXT NOT NULL CHECK (category IN ('architecture','tasks','decisions','issues','progress','conventions')),
     domain      TEXT DEFAULT NULL,
     title       TEXT NOT NULL,
     content     TEXT NOT NULL,
@@ -41,11 +41,20 @@ CREATE INDEX IF NOT EXISTS idx_entries_search     ON entries USING GIN(search_ve
 -- Auto-update search_vector trigger
 CREATE OR REPLACE FUNCTION update_search_vector()
 RETURNS TRIGGER AS $$
+DECLARE
+    lang TEXT;
 BEGIN
+    -- Read language from session variable, fall back to 'simple'
+    BEGIN
+        lang := current_setting('app.fts_language');
+    EXCEPTION WHEN OTHERS THEN
+        lang := 'simple';
+    END;
+
     NEW.search_vector :=
-        setweight(to_tsvector('simple', coalesce(NEW.title, '')), 'A') ||
-        setweight(to_tsvector('simple', coalesce(NEW.content, '')), 'B') ||
-        setweight(to_tsvector('simple', coalesce(array_to_string(NEW.tags, ' '), '')), 'C');
+        setweight(to_tsvector(lang::regconfig, coalesce(NEW.title, '')), 'A') ||
+        setweight(to_tsvector(lang::regconfig, coalesce(NEW.content, '')), 'B') ||
+        setweight(to_tsvector(lang::regconfig, coalesce(array_to_string(NEW.tags, ' '), '')), 'C');
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

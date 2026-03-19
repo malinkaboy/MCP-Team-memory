@@ -285,9 +285,22 @@ export class MemoryManager {
 
   // === Embedding ===
 
-  setEmbeddingProvider(provider: EmbeddingProvider): void {
+  async setEmbeddingProvider(provider: EmbeddingProvider): Promise<void> {
+    const storedDims = await this.storage.getEmbeddingDimensions();
+    const providerDims = provider.dimensions;
+
+    if (storedDims > 0 && storedDims !== providerDims) {
+      logger.warn(
+        { storedDims, providerDims },
+        'Embedding dimensions changed — clearing old embeddings for re-generation'
+      );
+      const cleared = await this.storage.clearAllEmbeddings();
+      logger.info({ cleared }, 'Old embeddings cleared');
+    }
+
+    await this.storage.setEmbeddingDimensions(providerDims);
     this.embeddingProvider = provider;
-    logger.info('Embedding provider set');
+    logger.info({ provider: provider.providerType, dimensions: providerDims }, 'Embedding provider set');
   }
 
   getEmbeddingProvider(): EmbeddingProvider | null {
@@ -314,12 +327,14 @@ export class MemoryManager {
     };
   }
 
+  /** Max texts per batch API call (Gemini limit is 100) */
+  private static readonly BATCH_CHUNK_SIZE = 100;
+
   /** Backfill embeddings for entries that don't have one yet (loops until all done) */
-  async backfillEmbeddings(batchSize: number = 50): Promise<number> {
+  async backfillEmbeddings(batchSize: number = 100): Promise<number> {
     if (!this.embeddingProvider?.isReady()) return 0;
 
     const provider = this.embeddingProvider;
-    const hasBatch = 'embedBatch' in provider && typeof (provider as any).embedBatch === 'function';
     let totalCount = 0;
 
     // eslint-disable-next-line no-constant-condition
@@ -329,35 +344,35 @@ export class MemoryManager {
 
       let batchCount = 0;
 
-      if (hasBatch) {
-        // Batch mode: one API call per batch (much more efficient)
-        try {
-          const texts = entries.map(e => `${e.title} ${e.content}`);
-          const embeddings = await (provider as any).embedBatch(texts, 'document') as number[][];
-          for (let i = 0; i < entries.length; i++) {
-            await this.storage.saveEmbedding(entries[i].id, embeddings[i]);
-            batchCount++;
-          }
-        } catch (err) {
-          logger.error({ err }, 'Embedding batch backfill failed, falling back to sequential');
-          // Fallback to sequential on batch failure
-          for (const entry of entries) {
-            try {
-              const text = `${entry.title} ${entry.content}`;
-              const embedding = await provider.embed(text, 'document');
-              await this.storage.saveEmbedding(entry.id, embedding);
+      if (provider.embedBatch) {
+        // Batch mode: chunk into groups of BATCH_CHUNK_SIZE for API limits
+        for (let i = 0; i < entries.length; i += MemoryManager.BATCH_CHUNK_SIZE) {
+          const chunk = entries.slice(i, i + MemoryManager.BATCH_CHUNK_SIZE);
+          try {
+            const texts = chunk.map(e => `${e.title} ${e.content}`);
+            const embeddings = await provider.embedBatch(texts, 'document');
+            for (let j = 0; j < chunk.length; j++) {
+              await this.storage.saveEmbedding(chunk[j].id, embeddings[j]);
               batchCount++;
-            } catch (seqErr) {
-              logger.error({ err: seqErr, entryId: entry.id }, 'Embedding backfill failed for entry');
+            }
+          } catch (err) {
+            logger.error({ err, chunkSize: chunk.length }, 'Batch embed failed, falling back to sequential');
+            for (const entry of chunk) {
+              try {
+                const embedding = await provider.embed(`${entry.title} ${entry.content}`, 'document');
+                await this.storage.saveEmbedding(entry.id, embedding);
+                batchCount++;
+              } catch (seqErr) {
+                logger.error({ err: seqErr, entryId: entry.id }, 'Sequential embed fallback failed');
+              }
             }
           }
         }
       } else {
-        // Sequential mode: one API call per entry
+        // No batch support — sequential
         for (const entry of entries) {
           try {
-            const text = `${entry.title} ${entry.content}`;
-            const embedding = await provider.embed(text, 'document');
+            const embedding = await provider.embed(`${entry.title} ${entry.content}`, 'document');
             await this.storage.saveEmbedding(entry.id, embedding);
             batchCount++;
           } catch (err) {
@@ -367,7 +382,7 @@ export class MemoryManager {
       }
 
       totalCount += batchCount;
-      logger.info({ batchCount, totalCount, batchFailed: entries.length - batchCount }, 'Backfill batch completed');
+      logger.info({ batchCount, totalCount, failed: entries.length - batchCount }, 'Backfill batch completed');
 
       // If nothing succeeded in this batch, stop to avoid infinite loop
       if (batchCount === 0) break;
@@ -407,7 +422,8 @@ export class MemoryManager {
       tasks: [],
       decisions: [],
       issues: [],
-      progress: []
+      progress: [],
+      conventions: [],
     };
 
     entries.forEach(e => {
@@ -415,6 +431,14 @@ export class MemoryManager {
     });
 
     let overview = `# Обзор проекта: ${project?.name || pid}\n\n`;
+
+    if (byCategory.conventions.length > 0) {
+      overview += `## 📏 Конвенции (${byCategory.conventions.length})\n`;
+      byCategory.conventions.forEach(e => {
+        overview += `- **${e.title}**${e.domain ? ` [${e.domain}]` : ''}\n`;
+      });
+      overview += '\n';
+    }
 
     if (byCategory.architecture.length > 0) {
       overview += `## 🏗️ Архитектура (${byCategory.architecture.length})\n`;
@@ -461,6 +485,109 @@ export class MemoryManager {
     return overview;
   }
 
+  // === Cross-Project Search ===
+
+  async crossSearch(query: string, filters?: {
+    category?: string;
+    domain?: string;
+    excludeProjectId?: string;
+    limit?: number;
+  }): Promise<(MemoryEntry & { projectName: string })[]> {
+    return this.storage.searchAcrossProjects(query, {
+      ...filters,
+      status: 'active',
+    });
+  }
+
+  // === Onboarding ===
+
+  /** Generate comprehensive onboarding summary for new agent/team member */
+  async generateOnboarding(projectId?: string): Promise<string> {
+    const pid = projectId || DEFAULT_PROJECT_ID;
+    const project = await this.storage.getProject(pid);
+
+    const [conventions, architecture, decisions, tasks, issues, progress] = await Promise.all([
+      this.storage.getAll(pid, { category: 'conventions', status: 'active', limit: 50 }),
+      this.storage.getAll(pid, { category: 'architecture', status: 'active', limit: 10 }),
+      this.storage.getAll(pid, { category: 'decisions', status: 'active', limit: 10 }),
+      this.storage.getAll(pid, { category: 'tasks', status: 'active', limit: 15 }),
+      this.storage.getAll(pid, { category: 'issues', status: 'active', limit: 10 }),
+      this.storage.getAll(pid, { category: 'progress', status: 'active', limit: 5 }),
+    ]);
+
+    const lines: string[] = [];
+    lines.push(`# Onboarding: ${project?.name || pid}`);
+    lines.push(`> Автоматическая сводка для нового участника. Сгенерирована ${new Date().toLocaleString()}`);
+    lines.push('');
+
+    if (project?.description) {
+      lines.push(`**Описание:** ${project.description}`);
+      lines.push(`**Домены:** ${project.domains.join(', ')}`);
+      lines.push('');
+    }
+
+    if (conventions.length > 0) {
+      lines.push('## 📏 Конвенции проекта');
+      lines.push('> Обязательно следуйте этим правилам при работе с кодом.');
+      lines.push('');
+      conventions.forEach(e => {
+        lines.push(`### ${e.title}${e.domain ? ` [${e.domain}]` : ''}`);
+        lines.push(e.content);
+        lines.push('');
+      });
+    }
+
+    if (architecture.length > 0) {
+      lines.push('## 🏗️ Архитектура');
+      architecture.forEach(e => {
+        lines.push(`### ${e.title}${e.domain ? ` [${e.domain}]` : ''}`);
+        lines.push(e.content.length > 500 ? e.content.substring(0, 500) + '...' : e.content);
+        lines.push('');
+      });
+    }
+
+    if (decisions.length > 0) {
+      lines.push('## ✅ Ключевые решения');
+      decisions.forEach(e => {
+        lines.push(`- **${e.title}**: ${e.content.length > 200 ? e.content.substring(0, 200) + '...' : e.content}`);
+      });
+      lines.push('');
+    }
+
+    if (tasks.length > 0) {
+      lines.push('## 📋 Активные задачи');
+      tasks.forEach(e => {
+        const pi = e.priority === 'critical' ? '🔴' : e.priority === 'high' ? '🟠' : e.priority === 'medium' ? '🟡' : '🟢';
+        lines.push(`- ${pi} **${e.title}**${e.domain ? ` [${e.domain}]` : ''} — ${e.author}`);
+      });
+      lines.push('');
+    }
+
+    if (issues.length > 0) {
+      lines.push('## 🐛 Известные проблемы');
+      issues.forEach(e => {
+        lines.push(`- **${e.title}**: ${e.content.length > 150 ? e.content.substring(0, 150) + '...' : e.content}`);
+      });
+      lines.push('');
+    }
+
+    if (progress.length > 0) {
+      lines.push('## 📈 Последний прогресс');
+      progress.forEach(e => {
+        lines.push(`- ${e.title} (${new Date(e.updatedAt).toLocaleDateString()})`);
+      });
+      lines.push('');
+    }
+
+    const stats = await this.getStats(pid);
+    lines.push('## 📊 Статистика');
+    lines.push(`- Всего записей: ${stats.totalEntries}`);
+    lines.push(`- Активных: ${stats.byStatus.active}, Завершённых: ${stats.byStatus.completed}, Архивных: ${stats.byStatus.archived}`);
+    lines.push(`- Активность за 24ч: ${stats.recentActivity.last24h}, за 7 дней: ${stats.recentActivity.last7d}`);
+
+    return lines.join('\n');
+  }
+
   // === Stats ===
 
   async getStats(projectId?: string): Promise<MemoryStats> {
@@ -475,6 +602,7 @@ export class MemoryManager {
         decisions: dbStats.byCategory.decisions || 0,
         issues: dbStats.byCategory.issues || 0,
         progress: dbStats.byCategory.progress || 0,
+        conventions: dbStats.byCategory.conventions || 0,
       },
       byDomain: dbStats.byDomain,
       byStatus: {

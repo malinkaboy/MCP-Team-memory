@@ -15,7 +15,20 @@ MCP сервер для централизованной командной па
 
 ## Быстрый старт
 
-### 1. Установка
+### Через npx (рекомендуется)
+
+```bash
+npx @anthropic-team/team-memory-mcp
+```
+
+Или глобально:
+
+```bash
+npm install -g @anthropic-team/team-memory-mcp
+team-memory-mcp
+```
+
+### Из исходников
 
 ```bash
 cd team-memory-mcp
@@ -282,6 +295,7 @@ team-memory-mcp/
 | `MEMORY_BACKUP_INTERVAL` | `3600000` | Интервал бэкапов (мс) |
 | `MEMORY_AUTO_ARCHIVE` | `true` | Автоархивация старых записей |
 | `MEMORY_AUTO_ARCHIVE_DAYS` | `14` | Порог для автоархивации (дни) |
+| `MEMORY_FTS_LANGUAGE` | `simple` | Язык полнотекстового поиска PostgreSQL (`simple`, `russian`, `english`, `german` и др.). Используйте `russian` для корректного стемминга русскоязычных записей. |
 
 ---
 

@@ -148,13 +148,13 @@ describe('MemoryManager embedding integration', () => {
     provider = createMockEmbeddingProvider();
   });
 
-  it('setEmbeddingProvider stores provider', () => {
-    manager.setEmbeddingProvider(provider);
+  it('setEmbeddingProvider stores provider', async () => {
+    await manager.setEmbeddingProvider(provider);
     expect(manager.getEmbeddingProvider()).toBe(provider);
   });
 
   it('write() generates embedding fire-and-forget', async () => {
-    manager.setEmbeddingProvider(provider);
+    await manager.setEmbeddingProvider(provider);
 
     const fakeRow = {
       id: 'new-1',
@@ -197,7 +197,7 @@ describe('MemoryManager embedding integration', () => {
   });
 
   it('read() uses hybridSearch when provider is ready', async () => {
-    manager.setEmbeddingProvider(provider);
+    await manager.setEmbeddingProvider(provider);
 
     const fakeRow = {
       id: 'found-1',
@@ -230,7 +230,7 @@ describe('MemoryManager embedding integration', () => {
 
   it('read() falls back to FTS when provider not ready', async () => {
     const notReadyProvider = createMockEmbeddingProvider(false);
-    manager.setEmbeddingProvider(notReadyProvider);
+    await manager.setEmbeddingProvider(notReadyProvider);
 
     // search query + trackReads + attachVersions use default mock
 
@@ -240,7 +240,7 @@ describe('MemoryManager embedding integration', () => {
   });
 
   it('backfillEmbeddings processes entries without embeddings', async () => {
-    manager.setEmbeddingProvider(provider);
+    await manager.setEmbeddingProvider(provider);
 
     const fakeRow = {
       id: 'backfill-1',
@@ -276,14 +276,14 @@ describe('MemoryManager embedding integration', () => {
 
   it('backfillEmbeddings returns 0 when provider not ready', async () => {
     const notReady = createMockEmbeddingProvider(false);
-    manager.setEmbeddingProvider(notReady);
+    await manager.setEmbeddingProvider(notReady);
 
     const count = await manager.backfillEmbeddings();
     expect(count).toBe(0);
   });
 
   it('backfillEmbeddings processes multiple batches until done', async () => {
-    manager.setEmbeddingProvider(provider);
+    await manager.setEmbeddingProvider(provider);
 
     const fakeRow1 = {
       id: 'batch-1', project_id: 'default', category: 'tasks', domain: null,
@@ -317,7 +317,10 @@ describe('MemoryManager embedding integration', () => {
   it('backfillEmbeddings stops on complete failure to prevent infinite loop', async () => {
     const failProvider = createMockEmbeddingProvider(true);
     (failProvider.embed as any).mockRejectedValue(new Error('API error'));
-    manager.setEmbeddingProvider(failProvider);
+    await manager.setEmbeddingProvider(failProvider);
+
+    // Reset mock call count after setEmbeddingProvider (which makes its own DB calls)
+    pool.query.mockClear();
 
     const fakeRow = {
       id: 'fail-1', project_id: 'default', category: 'tasks', domain: null,
@@ -331,7 +334,7 @@ describe('MemoryManager embedding integration', () => {
     const count = await manager.backfillEmbeddings(10);
 
     expect(count).toBe(0);
-    // Should NOT call getEntriesWithoutEmbedding again after failure
+    // Should only call getEntriesWithoutEmbedding once, then stop
     expect(pool.query).toHaveBeenCalledTimes(1);
   });
 
@@ -340,7 +343,7 @@ describe('MemoryManager embedding integration', () => {
       ...createMockEmbeddingProvider(true),
       embedBatch: vi.fn().mockResolvedValue([new Array(384).fill(0.1), new Array(384).fill(0.2)]),
     };
-    manager.setEmbeddingProvider(batchProvider);
+    await manager.setEmbeddingProvider(batchProvider);
 
     const fakeRows = [
       {

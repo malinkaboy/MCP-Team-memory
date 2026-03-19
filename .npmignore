@@ -1,0 +1,10 @@
+src/
+docs/
+*.test.ts
+*.spec.ts
+vitest.config.ts
+tsconfig.json
+.github/
+docker-compose*.yml
+Dockerfile
+data/

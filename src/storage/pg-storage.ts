@@ -54,10 +54,30 @@ function rowToProject(row: Record<string, unknown>): Project {
 export class PgStorage {
   private pool: pg.Pool;
 
-  constructor(databaseUrl: string) {
+  // Allowlist of valid PostgreSQL text search configurations
+  private static readonly VALID_FTS_LANGUAGES = [
+    'simple', 'russian', 'english', 'german', 'french', 'spanish',
+    'italian', 'portuguese', 'dutch', 'swedish', 'norwegian', 'danish', 'finnish',
+    'hungarian', 'turkish', 'arabic',
+  ];
+  private ftsLanguage: string;
+
+  constructor(databaseUrl: string, ftsLanguage: string = 'simple') {
+    // Validate FTS language against allowlist to prevent SQL injection
+    if (!PgStorage.VALID_FTS_LANGUAGES.includes(ftsLanguage)) {
+      logger.warn({ ftsLanguage }, `Invalid FTS language, falling back to 'simple'`);
+      ftsLanguage = 'simple';
+    }
+    this.ftsLanguage = ftsLanguage;
+
     this.pool = new pg.Pool({
       connectionString: databaseUrl,
       max: 20,
+    });
+
+    // Set FTS language for EVERY new connection (including those created during migrations)
+    this.pool.on('connect', (client: pg.PoolClient) => {
+      client.query(`SET app.fts_language = '${this.ftsLanguage}'`).catch(() => {});
     });
 
     // Prevent unhandled error crash when idle clients lose connection
@@ -229,7 +249,7 @@ export class PgStorage {
     let paramIdx = 2;
 
     // Full-text search + ILIKE fallback
-    conditions.push(`(search_vector @@ plainto_tsquery('simple', $${paramIdx}) OR title ILIKE $${paramIdx + 1} OR content ILIKE $${paramIdx + 1})`);
+    conditions.push(`(search_vector @@ plainto_tsquery(current_setting('app.fts_language')::regconfig, $${paramIdx}) OR title ILIKE $${paramIdx + 1} OR content ILIKE $${paramIdx + 1})`);
     values.push(query, `%${escapeIlike(query)}%`);
     paramIdx += 2;
 
@@ -521,7 +541,7 @@ export class PgStorage {
 
     // Text + vector match condition
     conditions.push(
-      `(search_vector @@ plainto_tsquery('simple', $${paramIdx}) OR embedding <=> $${paramIdx + 1}::vector < 0.7)`
+      `(search_vector @@ plainto_tsquery(current_setting('app.fts_language')::regconfig, $${paramIdx}) OR embedding <=> $${paramIdx + 1}::vector < 0.7)`
     );
     values.push(query, `[${queryEmbedding.join(',')}]`);
     const textParamIdx = paramIdx;
@@ -550,12 +570,12 @@ export class PgStorage {
 
     const sql = `
       SELECT *,
-        ts_rank(search_vector, plainto_tsquery('simple', $${textParamIdx})) AS text_score,
+        ts_rank(search_vector, plainto_tsquery(current_setting('app.fts_language')::regconfig, $${textParamIdx})) AS text_score,
         1 - (embedding <=> $${vectorParamIdx}::vector) AS vector_score
       FROM entries
       WHERE ${conditions.join(' AND ')}
       ORDER BY (
-        0.4 * COALESCE(ts_rank(search_vector, plainto_tsquery('simple', $${textParamIdx})), 0)
+        0.4 * COALESCE(ts_rank(search_vector, plainto_tsquery(current_setting('app.fts_language')::regconfig, $${textParamIdx})), 0)
         + 0.6 * COALESCE(1 - (embedding <=> $${vectorParamIdx}::vector), 0)
       ) DESC
       LIMIT $${paramIdx}
@@ -595,6 +615,42 @@ export class PgStorage {
     return { embedded: rows[0].embedded, total: rows[0].total };
   }
 
+  /** Get stored embedding dimensions from schema_meta */
+  async getEmbeddingDimensions(): Promise<number> {
+    const { rows } = await this.pool.query(
+      `SELECT value FROM schema_meta WHERE key = 'embedding_dimensions'`
+    );
+    return rows.length > 0 ? parseInt(rows[0].value, 10) : 0;
+  }
+
+  /** Update stored embedding dimensions, recreate HNSW index for new dimensions */
+  async setEmbeddingDimensions(dims: number): Promise<void> {
+    if (!Number.isInteger(dims) || dims <= 0 || dims > 10000) {
+      throw new Error(`Invalid embedding dimensions: ${dims}`);
+    }
+    await this.pool.query(
+      `INSERT INTO schema_meta(key, value) VALUES ('embedding_dimensions', $1)
+       ON CONFLICT (key) DO UPDATE SET value = $1`,
+      [String(dims)]
+    );
+
+    // Recreate HNSW index with correct dimensions for the active provider
+    await this.pool.query(`DROP INDEX IF EXISTS idx_entries_embedding`);
+    await this.pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_entries_embedding
+       ON entries USING hnsw ((embedding::vector(${dims})) vector_cosine_ops)`
+    );
+    logger.info({ dims }, 'HNSW embedding index recreated for new dimensions');
+  }
+
+  /** Clear all embeddings (when switching provider with different dimensions) */
+  async clearAllEmbeddings(): Promise<number> {
+    const result = await this.pool.query(
+      `UPDATE entries SET embedding = NULL WHERE embedding IS NOT NULL`
+    );
+    return result.rowCount ?? 0;
+  }
+
   /** Fire-and-forget: increment read_count for returned entry IDs */
   private trackReads(ids: string[]): void {
     if (ids.length === 0) return;
@@ -613,6 +669,63 @@ export class PgStorage {
     const { sql, params } = buildArchiveByScoreQuery(threshold, decayDays, weights);
     const result = await this.pool.query(sql, params);
     return result.rowCount ?? 0;
+  }
+
+  /** Search across ALL projects, returning entries with project info */
+  async searchAcrossProjects(query: string, filters?: {
+    category?: string;
+    domain?: string;
+    status?: string;
+    limit?: number;
+    excludeProjectId?: string;
+  }): Promise<(MemoryEntry & { projectName: string })[]> {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let paramIdx = 1;
+
+    // FTS + ILIKE
+    conditions.push(`(e.search_vector @@ plainto_tsquery(current_setting('app.fts_language')::regconfig, $${paramIdx}) OR e.title ILIKE $${paramIdx + 1} OR e.content ILIKE $${paramIdx + 1})`);
+    values.push(query, `%${escapeIlike(query)}%`);
+    const textParamIdx = paramIdx;
+    paramIdx += 2;
+
+    if (filters?.category && filters.category !== 'all') {
+      conditions.push(`e.category = $${paramIdx++}`);
+      values.push(filters.category);
+    }
+    if (filters?.domain) {
+      conditions.push(`e.domain = $${paramIdx++}`);
+      values.push(filters.domain);
+    }
+    if (filters?.status) {
+      conditions.push(`e.status = $${paramIdx++}`);
+      values.push(filters.status);
+    }
+    if (filters?.excludeProjectId) {
+      conditions.push(`e.project_id != $${paramIdx++}`);
+      values.push(filters.excludeProjectId);
+    }
+
+    const limit = filters?.limit || 20;
+    values.push(limit);
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const { rows } = await this.pool.query(
+      `SELECT e.*, p.name as project_name,
+         ts_rank(e.search_vector, plainto_tsquery(current_setting('app.fts_language')::regconfig, $${textParamIdx})) AS relevance
+       FROM entries e
+       JOIN projects p ON e.project_id = p.id
+       ${whereClause}
+       ORDER BY relevance DESC, e.updated_at DESC
+       LIMIT $${paramIdx}`,
+      values
+    );
+
+    return rows.map(row => ({
+      ...rowToEntry(row),
+      projectName: row.project_name as string,
+    }));
   }
 
   /** Attach currentVersion from entry_versions to entries */

@@ -115,6 +115,14 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     return result.map(v => v / norm);
   }
 
+  async embedBatch(texts: string[]): Promise<number[][]> {
+    const results: number[][] = [];
+    for (const text of texts) {
+      results.push(await this.embed(text));
+    }
+    return results;
+  }
+
   async close(): Promise<void> {
     if (this.session) {
       try {
