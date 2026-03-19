@@ -73,20 +73,29 @@ export async function buildAutoContext(
   }
 
   // 3. Semantic matches (if context provided + embeddings enabled)
+  // Timeout protects against slow embedding API (e.g. Gemini) blocking the entire MCP prompt
   if (context) {
     const embeddingProvider = manager.getEmbeddingProvider();
     if (embeddingProvider?.isReady()) {
       try {
-        const queryEmbedding = await embeddingProvider.embed(context, 'query');
-        const semantic = await storage.hybridSearch(
-          projectId || DEFAULT_PROJECT_ID,
-          context,
-          queryEmbedding,
-          { limit: 5 }
-        );
-        addUnique(semantic);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
+        try {
+          const queryEmbedding = await embeddingProvider.embed(context, 'query');
+          if (!controller.signal.aborted) {
+            const semantic = await storage.hybridSearch(
+              projectId || DEFAULT_PROJECT_ID,
+              context,
+              queryEmbedding,
+              { limit: 5 }
+            );
+            addUnique(semantic);
+          }
+        } finally {
+          clearTimeout(timeout);
+        }
       } catch (err) {
-        logger.error({ err }, 'Auto-recall: semantic search failed');
+        logger.warn({ err }, 'Auto-recall: semantic search failed or timed out, using pinned + recent only');
       }
     }
   }

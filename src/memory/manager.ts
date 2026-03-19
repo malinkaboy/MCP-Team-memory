@@ -162,6 +162,8 @@ export class MemoryManager {
     }).catch(err => logger.error({ err }, 'Audit log failed'));
 
     // Fire-and-forget: generate embedding for new entry
+    // Fire-and-forget: embeddings are eventually consistent.
+    // If server crashes before completion, backfill recovers missing embeddings on next startup.
     if (this.embeddingProvider?.isReady()) {
       this.embeddingProvider.embed(`${created.title} ${created.content}`, 'document')
         .then(emb => this.storage.saveEmbedding(created.id, emb))
@@ -351,6 +353,7 @@ export class MemoryManager {
           try {
             const texts = chunk.map(e => `${e.title} ${e.content}`);
             const embeddings = await provider.embedBatch(texts, 'document');
+            // TODO: optimize with batch INSERT ... VALUES (...), (...) for large backfills
             for (let j = 0; j < chunk.length; j++) {
               await this.storage.saveEmbedding(chunk[j].id, embeddings[j]);
               batchCount++;

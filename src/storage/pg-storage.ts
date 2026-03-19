@@ -635,6 +635,7 @@ export class PgStorage {
     );
 
     // Recreate HNSW index with correct dimensions for the active provider
+    // SAFETY: dims is validated above (integer, 1-10000) — no SQL injection risk from interpolation
     await this.pool.query(`DROP INDEX IF EXISTS idx_entries_embedding`);
     await this.pool.query(
       `CREATE INDEX IF NOT EXISTS idx_entries_embedding
@@ -683,7 +684,7 @@ export class PgStorage {
     const values: unknown[] = [];
     let paramIdx = 1;
 
-    // FTS + ILIKE
+    // FTS with stemming + ILIKE fallback (ILIKE is intentionally raw — no stemming needed for fuzzy substring match)
     conditions.push(`(e.search_vector @@ plainto_tsquery(current_setting('app.fts_language')::regconfig, $${paramIdx}) OR e.title ILIKE $${paramIdx + 1} OR e.content ILIKE $${paramIdx + 1})`);
     values.push(query, `%${escapeIlike(query)}%`);
     const textParamIdx = paramIdx;
