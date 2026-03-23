@@ -183,25 +183,25 @@
       <div class="graph-view" id="graph-view" style="display:none">
         <div class="graph-toolbar">
           <div class="graph-toolbar-left">
-            <button class="btn btn-secondary btn-sm" id="btn-toggle-layout" onclick="toggleLayout()">
+            <button class="btn btn-secondary btn-sm" id="btn-toggle-layout" data-graph-action="toggleLayout">
               <i data-lucide="rotate-cw"></i> Reheat
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="graphZoomIn()">
+            <button class="btn btn-secondary btn-sm" data-graph-action="graphZoomIn">
               <i data-lucide="zoom-in"></i>
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="graphZoomOut()">
+            <button class="btn btn-secondary btn-sm" data-graph-action="graphZoomOut">
               <i data-lucide="zoom-out"></i>
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="graphZoomFit()">
+            <button class="btn btn-secondary btn-sm" data-graph-action="graphZoomFit">
               <i data-lucide="maximize-2"></i>
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="resetGraphFilters()">
+            <button class="btn btn-secondary btn-sm" data-graph-action="resetGraphFilters">
               <i data-lucide="refresh-cw"></i> Сброс
             </button>
           </div>
           <div class="graph-toolbar-right">
             <div class="graph-stats" id="graph-stats"></div>
-            <button class="btn btn-secondary btn-sm" id="btn-toggle-sidebar" onclick="toggleGraphSidebar()" title="Легенда">
+            <button class="btn btn-secondary btn-sm" id="btn-toggle-sidebar" data-graph-action="toggleGraphSidebar" title="Легенда">
               <i data-lucide="panel-right-close"></i>
             </button>
           </div>
@@ -312,20 +312,34 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label for="entry-category">Категория</label>
-              <select id="entry-category" required>
-                <option value="architecture">Архитектура</option>
-                <option value="tasks">Задачи</option>
-                <option value="decisions">Решения</option>
-                <option value="issues">Проблемы</option>
-                <option value="progress">Прогресс</option>
-              </select>
+              <label>Категория</label>
+              <input type="hidden" id="entry-category" value="architecture">
+              <div class="custom-select custom-select--compact" id="category-select">
+                <button class="custom-select-trigger" type="button">
+                  <span class="custom-select-value">Архитектура</span>
+                  <i data-lucide="chevron-down" class="custom-select-arrow"></i>
+                </button>
+                <div class="custom-select-options">
+                  <div class="custom-select-option selected" data-value="architecture"><span class="custom-select-option-name">Архитектура</span></div>
+                  <div class="custom-select-option" data-value="tasks"><span class="custom-select-option-name">Задачи</span></div>
+                  <div class="custom-select-option" data-value="decisions"><span class="custom-select-option-name">Решения</span></div>
+                  <div class="custom-select-option" data-value="issues"><span class="custom-select-option-name">Проблемы</span></div>
+                  <div class="custom-select-option" data-value="progress"><span class="custom-select-option-name">Прогресс</span></div>
+                </div>
+              </div>
             </div>
             <div class="form-group">
-              <label for="entry-domain">Домен</label>
-              <select id="entry-domain">
-                <option value="">Без домена</option>
-              </select>
+              <label>Домен</label>
+              <input type="hidden" id="entry-domain" value="">
+              <div class="custom-select custom-select--compact" id="domain-select">
+                <button class="custom-select-trigger" type="button">
+                  <span class="custom-select-value">Без домена</span>
+                  <i data-lucide="chevron-down" class="custom-select-arrow"></i>
+                </button>
+                <div class="custom-select-options" id="domain-options">
+                  <div class="custom-select-option selected" data-value=""><span class="custom-select-option-name">Без домена</span></div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -341,21 +355,35 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label for="entry-priority">Приоритет</label>
-              <select id="entry-priority">
-                <option value="low">Низкий</option>
-                <option value="medium" selected>Средний</option>
-                <option value="high">Высокий</option>
-                <option value="critical">Критический</option>
-              </select>
+              <label>Приоритет</label>
+              <input type="hidden" id="entry-priority" value="medium">
+              <div class="custom-select custom-select--compact" id="priority-select">
+                <button class="custom-select-trigger" type="button">
+                  <span class="custom-select-value">Средний</span>
+                  <i data-lucide="chevron-down" class="custom-select-arrow"></i>
+                </button>
+                <div class="custom-select-options">
+                  <div class="custom-select-option" data-value="low"><span class="custom-select-option-name">Низкий</span></div>
+                  <div class="custom-select-option selected" data-value="medium"><span class="custom-select-option-name">Средний</span></div>
+                  <div class="custom-select-option" data-value="high"><span class="custom-select-option-name">Высокий</span></div>
+                  <div class="custom-select-option" data-value="critical"><span class="custom-select-option-name">Критический</span></div>
+                </div>
+              </div>
             </div>
             <div class="form-group">
-              <label for="entry-status">Статус</label>
-              <select id="entry-status">
-                <option value="active">Активный</option>
-                <option value="completed">Завершён</option>
-                <option value="archived">Архив</option>
-              </select>
+              <label>Статус</label>
+              <input type="hidden" id="entry-status" value="active">
+              <div class="custom-select custom-select--compact" id="entry-status-select">
+                <button class="custom-select-trigger" type="button">
+                  <span class="custom-select-value">Активный</span>
+                  <i data-lucide="chevron-down" class="custom-select-arrow"></i>
+                </button>
+                <div class="custom-select-options">
+                  <div class="custom-select-option selected" data-value="active"><span class="custom-select-option-name">Активный</span></div>
+                  <div class="custom-select-option" data-value="completed"><span class="custom-select-option-name">Завершён</span></div>
+                  <div class="custom-select-option" data-value="archived"><span class="custom-select-option-name">Архив</span></div>
+                </div>
+              </div>
             </div>
           </div>
 

@@ -345,7 +345,7 @@ function showNodeDetail(nodeId) {
     <div class="graph-detail-header">
       <span class="priority-dot priority-${entry.priority}"></span>
       <h3>${escapeHtml(entry.title)}</h3>
-      <button onclick="hideNodeDetail()" class="graph-detail-close"><i data-lucide="x"></i></button>
+      <button data-graph-action="hideNodeDetail" class="graph-detail-close"><i data-lucide="x"></i></button>
     </div>
     <div class="graph-detail-badges">
       <span class="graph-detail-cat" style="background:${CATEGORY_COLORS[entry.category]}20;color:${CATEGORY_COLORS[entry.category]};border:1px solid ${CATEGORY_COLORS[entry.category]}50">${categoryLabel(entry.category)}</span>
@@ -359,7 +359,7 @@ function showNodeDetail(nodeId) {
       </div>
     ` : ''}
     <div class="graph-detail-actions">
-      <button class="btn btn-primary btn-sm" onclick="openEntryFromGraph('${entry.id}')">
+      <button class="btn btn-primary btn-sm" data-graph-action="openEntryFromGraph" data-id="${entry.id}">
         <i data-lucide="pencil"></i> Редактировать
       </button>
     </div>
@@ -372,7 +372,7 @@ function showNodeDetail(nodeId) {
       <div class="graph-detail-neighbors">
         <h4>\u0421\u0432\u044f\u0437\u0430\u043d\u043d\u044b\u0435 \u0437\u0430\u043f\u0438\u0441\u0438</h4>
         ${neighborEntries.map(n => `
-          <div class="graph-neighbor-item" onclick="focusNode('${n.id}')">
+          <div class="graph-neighbor-item" data-graph-action="focusNode" data-id="${n.id}">
             <span class="priority-dot priority-${n.priority}"></span>
             <span>${escapeHtml(truncate(n.title, 50))}</span>
             <span class="graph-neighbor-cat" style="color:${CATEGORY_COLORS[n.category] || '#999'}">${categoryLabel(n.category)}</span>
@@ -537,6 +537,28 @@ function toggleGraphSidebar() {
   }
 }
 window.toggleGraphSidebar = toggleGraphSidebar;
+
+// ── Graph toolbar delegation (CSP-safe) ─────────────
+const graphActions = {
+  toggleLayout,
+  graphZoomIn,
+  graphZoomOut,
+  graphZoomFit,
+  resetGraphFilters,
+  toggleGraphSidebar,
+  hideNodeDetail,
+  openEntryFromGraph: (id) => openEntryFromGraph(id),
+  focusNode: (id) => focusNode(id),
+};
+
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-graph-action]');
+  if (!el) return;
+  const action = el.dataset.graphAction;
+  const id = el.dataset.id;
+  const fn = graphActions[action];
+  if (fn) fn(id);
+});
 
 // ── Public API ───────────────────────────────────────
 

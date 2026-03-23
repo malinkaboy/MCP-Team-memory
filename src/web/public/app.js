@@ -150,8 +150,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
   initSearch();
   initModal();
+  initFormSelects();
   initThemeSwitcher();
   initProjectsModal();
+  initEntryActions();
   initWebSocket();
   await loadProjects();
   loadEntries();
@@ -275,18 +277,24 @@ function switchProject(projectId) {
 }
 
 function populateEntryDomainSelect() {
-  const domainSelect = document.getElementById('entry-domain');
+  const optionsContainer = document.getElementById('domain-options');
   const project = projects.find(p => p.id === currentProjectId);
   const domains = project ? project.domains : [];
 
-  domainSelect.innerHTML = '<option value="">Без домена</option>';
+  optionsContainer.innerHTML = '<div class="custom-select-option selected" data-value=""><span class="custom-select-option-name">Без домена</span></div>';
   for (const d of domains) {
-    const opt = document.createElement('option');
-    opt.value = d;
     const info = domainInfo[d];
-    opt.textContent = info ? info.name : d;
-    domainSelect.appendChild(opt);
+    const label = info ? info.name : d;
+    const optEl = document.createElement('div');
+    optEl.className = 'custom-select-option';
+    optEl.dataset.value = d;
+    optEl.innerHTML = `<span class="custom-select-option-name">${escapeHtml(label)}</span>`;
+    optionsContainer.appendChild(optEl);
   }
+
+  // Re-bind click handlers for new options
+  initFormSelect('domain-select', 'entry-domain');
+  setFormSelectValue('domain-select', 'entry-domain', '');
 }
 
 // Navigation
@@ -394,6 +402,93 @@ function initSearch() {
 
 }
 
+// === Form Custom Selects ===
+
+function initFormSelect(selectId, hiddenInputId) {
+  const wrapper = document.getElementById(selectId);
+  if (!wrapper) return;
+  const trigger = wrapper.querySelector('.custom-select-trigger');
+  const valueEl = wrapper.querySelector('.custom-select-value');
+  const options = wrapper.querySelectorAll('.custom-select-option');
+  const hidden = document.getElementById(hiddenInputId);
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // Close other open selects
+    document.querySelectorAll('.custom-select.open').forEach(s => {
+      if (s !== wrapper) s.classList.remove('open');
+    });
+    wrapper.classList.toggle('open');
+  });
+
+  options.forEach(opt => {
+    opt.addEventListener('click', (e) => {
+      e.stopPropagation();
+      options.forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      valueEl.textContent = opt.querySelector('.custom-select-option-name').textContent;
+      hidden.value = opt.dataset.value;
+      wrapper.classList.remove('open');
+    });
+  });
+}
+
+function setFormSelectValue(selectId, hiddenInputId, value) {
+  const wrapper = document.getElementById(selectId);
+  const hidden = document.getElementById(hiddenInputId);
+  if (!wrapper || !hidden) return;
+  hidden.value = value;
+  const options = wrapper.querySelectorAll('.custom-select-option');
+  options.forEach(opt => {
+    opt.classList.toggle('selected', opt.dataset.value === value);
+    if (opt.dataset.value === value) {
+      wrapper.querySelector('.custom-select-value').textContent =
+        opt.querySelector('.custom-select-option-name').textContent;
+    }
+  });
+}
+
+function initFormSelects() {
+  initFormSelect('category-select', 'entry-category');
+  initFormSelect('domain-select', 'entry-domain');
+  initFormSelect('priority-select', 'entry-priority');
+  initFormSelect('entry-status-select', 'entry-status');
+
+  // Close all selects on outside click
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.custom-select.open').forEach(s => s.classList.remove('open'));
+  });
+}
+
+// === Entry & Project Action Delegation (CSP-safe, no inline handlers) ===
+
+function initEntryActions() {
+  // Entry card actions (delegated on entries container)
+  entriesContainer.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    e.stopPropagation();
+    const action = btn.dataset.action;
+    const id = btn.dataset.id;
+    if (action === 'togglePin') togglePin(id);
+    else if (action === 'editEntry') editEntry(id);
+    else if (action === 'showHistory') showHistory(id);
+    else if (action === 'archiveEntry') archiveEntry(id);
+    else if (action === 'deleteEntry') deleteEntry(id);
+  });
+
+  // Project delete action (delegated on projects modal)
+  const projectsList = document.getElementById('projects-list');
+  if (projectsList) {
+    projectsList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action="deleteProject"]');
+      if (!btn) return;
+      e.stopPropagation();
+      deleteProject(btn.dataset.id);
+    });
+  }
+}
+
 // === Entry Modal ===
 
 function initModal() {
@@ -414,23 +509,27 @@ function openModal(entry = null) {
   if (entry) {
     modalTitle.textContent = 'Редактировать запись';
     document.getElementById('entry-id').value = entry.id;
-    document.getElementById('entry-category').value = entry.category;
-    document.getElementById('entry-domain').value = entry.domain || '';
+    setFormSelectValue('category-select', 'entry-category', entry.category);
+    setFormSelectValue('domain-select', 'entry-domain', entry.domain || '');
     document.getElementById('entry-title').value = entry.title;
     document.getElementById('entry-content').value = entry.content;
-    document.getElementById('entry-priority').value = entry.priority;
-    document.getElementById('entry-status').value = entry.status;
+    setFormSelectValue('priority-select', 'entry-priority', entry.priority);
+    setFormSelectValue('entry-status-select', 'entry-status', entry.status);
     document.getElementById('entry-tags').value = entry.tags.join(', ');
     document.getElementById('entry-author').value = entry.author;
   } else {
     modalTitle.textContent = 'Добавить запись';
     entryForm.reset();
     document.getElementById('entry-id').value = '';
+    setFormSelectValue('category-select', 'entry-category', 'architecture');
+    setFormSelectValue('priority-select', 'entry-priority', 'medium');
+    setFormSelectValue('entry-status-select', 'entry-status', 'active');
+    setFormSelectValue('domain-select', 'entry-domain', '');
     if (currentCategory !== 'all' && currentCategory !== 'pinned') {
-      document.getElementById('entry-category').value = currentCategory;
+      setFormSelectValue('category-select', 'entry-category', currentCategory);
     }
     if (currentDomain) {
-      document.getElementById('entry-domain').value = currentDomain;
+      setFormSelectValue('domain-select', 'entry-domain', currentDomain);
     }
   }
 
@@ -539,7 +638,7 @@ function renderProjectsList() {
       </div>
       <div class="project-item-actions">
         ${p.name !== 'default' ? `
-          <button class="btn-icon" onclick="deleteProject('${p.id}')" title="Удалить проект">
+          <button class="btn-icon" data-action="deleteProject" data-id="${p.id}" title="Удалить проект">
             <i data-lucide="trash-2"></i>
           </button>
         ` : ''}
@@ -751,19 +850,19 @@ function renderEntries() {
           <span><i data-lucide="calendar"></i> ${formatDate(entry.updatedAt)}</span>
         </div>
         <div class="entry-actions">
-          <button onclick="togglePin('${entry.id}')" title="${entry.pinned ? 'Открепить' : 'Закрепить'}" class="${entry.pinned ? 'active' : ''}">
+          <button data-action="togglePin" data-id="${entry.id}" title="${entry.pinned ? 'Открепить' : 'Закрепить'}" class="${entry.pinned ? 'active' : ''}">
             <i data-lucide="pin"></i>
           </button>
-          <button onclick="editEntry('${entry.id}')" title="Редактировать">
+          <button data-action="editEntry" data-id="${entry.id}" title="Редактировать">
             <i data-lucide="pencil"></i>
           </button>
-          <button onclick="showHistory('${entry.id}')" title="История">
+          <button data-action="showHistory" data-id="${entry.id}" title="История">
             <i data-lucide="history"></i>
           </button>
-          <button onclick="archiveEntry('${entry.id}')" title="Архивировать">
+          <button data-action="archiveEntry" data-id="${entry.id}" title="Архивировать">
             <i data-lucide="archive"></i>
           </button>
-          <button onclick="deleteEntry('${entry.id}')" title="Удалить">
+          <button data-action="deleteEntry" data-id="${entry.id}" title="Удалить">
             <i data-lucide="trash-2"></i>
           </button>
         </div>
