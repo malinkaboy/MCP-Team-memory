@@ -41,6 +41,40 @@ let ws = null;
 let isGraphView = false;
 let isAgentsView = false;
 
+// Theme configuration
+const THEMES = [
+  {
+    id: 'default',
+    name: 'Default',
+    desc: 'Тёмная тема с indigo-акцентом',
+    colors: { bg: '#0f0f0f', sidebar: '#1a1a1a', sidebarBorder: '1px solid #333', accent: '#6366f1', line1: '#333', line2: '#6366f1', line3: '#252525', line4: '#252525' }
+  },
+  {
+    id: 'brutalist',
+    name: 'Brutalist',
+    desc: 'Жёсткий геометричный стиль, толстые рамки',
+    colors: { bg: '#F8F6F1', sidebar: '#fff', sidebarBorder: '3px solid #111', accent: '#D42B2B', line1: '#D8D4CC', line2: '#D42B2B', line3: '#EDEAE4', line4: '#EDEAE4' }
+  },
+  {
+    id: 'gazette',
+    name: 'Gazette',
+    desc: 'Газетный editorial-стиль, тёплые тона',
+    colors: { bg: '#F6F1E9', sidebar: '#FAF7F1', sidebarBorder: '2px solid #2A241C', accent: '#8B2020', line1: '#D4C9B8', line2: '#8B2020', line3: '#E2D9CA', line4: '#E2D9CA' }
+  },
+  {
+    id: 'sport',
+    name: 'Sport',
+    desc: 'Тёмный спортивный с неоновым акцентом',
+    colors: { bg: '#0A0A0A', sidebar: '#161616', sidebarBorder: '1px solid #3A3A3A', accent: '#CCFF00', line1: '#3A3A3A', line2: '#CCFF00', line3: '#1C1C1C', line4: '#1C1C1C' }
+  },
+  {
+    id: 'dashboard',
+    name: 'Dashboard',
+    desc: 'Aurora-градиенты, тёплые и холодные тона',
+    colors: { bg: '#07070B', sidebar: '#0D0D14', sidebarBorder: '1px solid rgba(255,255,255,0.05)', accent: '#FF8C42', line1: '#2A2A34', line2: 'linear-gradient(90deg, #FF8C42, #FF3B6C)', line3: '#15151E', line4: '#15151E' }
+  }
+];
+
 // Domain display info
 const domainInfo = {
   backend:        { name: 'Backend',        icon: 'server' },
@@ -116,6 +150,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
   initSearch();
   initModal();
+  initThemeSwitcher();
   initProjectsModal();
   initWebSocket();
   await loadProjects();
@@ -1359,4 +1394,105 @@ async function deleteAgent(id, name) {
   } catch (e) {
     showToast('Ошибка сети', 'error');
   }
+}
+
+// ============================================
+// Theme Switching
+// ============================================
+
+function getCurrentTheme() {
+  return document.documentElement.dataset.theme || 'default';
+}
+
+function applyTheme(themeId) {
+  if (themeId === 'default') {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.removeItem('tm-theme');
+  } else {
+    document.documentElement.dataset.theme = themeId;
+    localStorage.setItem('tm-theme', themeId);
+  }
+}
+
+function renderThemePreview(colors) {
+  return `<div class="theme-preview">
+    <div class="theme-preview-inner" style="background:${colors.bg}">
+      <div class="theme-preview-sidebar" style="background:${colors.sidebar};border-right:${colors.sidebarBorder}"></div>
+      <div class="theme-preview-main">
+        <div class="theme-preview-line" style="width:80%;background:${colors.line1}"></div>
+        <div class="theme-preview-line" style="width:60%;background:${colors.line2}"></div>
+        <div class="theme-preview-line" style="width:80%;background:${colors.line3}"></div>
+        <div class="theme-preview-line" style="width:40%;background:${colors.line4}"></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function openThemeModal() {
+  const current = getCurrentTheme();
+  const list = document.getElementById('theme-list');
+
+  list.innerHTML = THEMES.map(t => `
+    <div class="theme-row ${t.id === current ? 'active' : ''}" data-theme-id="${t.id}">
+      ${renderThemePreview(t.colors)}
+      <div class="theme-info">
+        <div class="theme-name">${t.name}</div>
+        <div class="theme-desc">${t.desc}</div>
+      </div>
+      <div class="theme-check">\u2713</div>
+    </div>
+  `).join('');
+
+  let selectedId = null;
+  list.querySelectorAll('.theme-row').forEach(row => {
+    row.addEventListener('click', () => {
+      list.querySelectorAll('.theme-row').forEach(r => r.classList.remove('selected'));
+      row.classList.add('selected');
+      selectedId = row.dataset.themeId;
+    });
+  });
+
+  const themeModal = document.getElementById('theme-modal');
+  themeModal.classList.add('active');
+
+  const applyBtn = document.getElementById('theme-apply');
+  const cancelBtn = document.getElementById('theme-cancel');
+  const closeBtn = document.getElementById('theme-modal-close');
+
+  const handleApply = () => {
+    if (selectedId) {
+      applyTheme(selectedId);
+    }
+    closeThemeModal();
+  };
+
+  const handleClose = () => closeThemeModal();
+
+  applyBtn.onclick = handleApply;
+  cancelBtn.onclick = handleClose;
+  closeBtn.onclick = handleClose;
+
+  themeModal.onclick = (e) => {
+    if (e.target === themeModal) handleClose();
+  };
+}
+
+function closeThemeModal() {
+  document.getElementById('theme-modal').classList.remove('active');
+}
+
+function initThemeSwitcher() {
+  const btn = document.getElementById('btn-theme');
+  if (btn) {
+    btn.addEventListener('click', openThemeModal);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const themeModal = document.getElementById('theme-modal');
+      if (themeModal && themeModal.classList.contains('active')) {
+        closeThemeModal();
+      }
+    }
+  });
 }
