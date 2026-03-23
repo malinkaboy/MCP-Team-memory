@@ -406,30 +406,30 @@ function initSearch() {
 
 function initFormSelect(selectId, hiddenInputId) {
   const wrapper = document.getElementById(selectId);
-  if (!wrapper) return;
+  if (!wrapper || wrapper._formSelectInit) return;
+  wrapper._formSelectInit = true;
   const trigger = wrapper.querySelector('.custom-select-trigger');
   const valueEl = wrapper.querySelector('.custom-select-value');
-  const options = wrapper.querySelectorAll('.custom-select-option');
   const hidden = document.getElementById(hiddenInputId);
 
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
-    // Close other open selects
     document.querySelectorAll('.custom-select.open').forEach(s => {
       if (s !== wrapper) s.classList.remove('open');
     });
     wrapper.classList.toggle('open');
   });
 
-  options.forEach(opt => {
-    opt.addEventListener('click', (e) => {
-      e.stopPropagation();
-      options.forEach(o => o.classList.remove('selected'));
-      opt.classList.add('selected');
-      valueEl.textContent = opt.querySelector('.custom-select-option-name').textContent;
-      hidden.value = opt.dataset.value;
-      wrapper.classList.remove('open');
-    });
+  // Event delegation — works for dynamically added options
+  wrapper.addEventListener('click', (e) => {
+    const opt = e.target.closest('.custom-select-option');
+    if (!opt) return;
+    e.stopPropagation();
+    wrapper.querySelectorAll('.custom-select-option').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    valueEl.textContent = opt.querySelector('.custom-select-option-name').textContent;
+    hidden.value = opt.dataset.value;
+    wrapper.classList.remove('open');
   });
 }
 
