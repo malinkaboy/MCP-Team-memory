@@ -38,8 +38,9 @@ describe('buildAutoContext', () => {
     const pinnedEntry = makeEntry({ pinned: true, title: 'Pinned Important' });
 
     manager.getStorage().getAll
-      .mockResolvedValueOnce([pinnedEntry])  // pinned query
-      .mockResolvedValueOnce([]);            // recent query
+      .mockResolvedValueOnce([pinnedEntry])  // pinned
+      .mockResolvedValueOnce([])             // conventions
+      .mockResolvedValueOnce([]);            // recent
 
     const result = await buildAutoContext(manager as any, {});
     expect(result.entries).toContainEqual(expect.objectContaining({ title: 'Pinned Important' }));
@@ -50,8 +51,9 @@ describe('buildAutoContext', () => {
     const recentEntry = makeEntry({ title: 'Recent Update', updatedAt: new Date().toISOString() });
 
     manager.getStorage().getAll
-      .mockResolvedValueOnce([])            // pinned query
-      .mockResolvedValueOnce([recentEntry]); // recent query
+      .mockResolvedValueOnce([])             // pinned
+      .mockResolvedValueOnce([])             // conventions
+      .mockResolvedValueOnce([recentEntry]); // recent
 
     const result = await buildAutoContext(manager as any, {});
     expect(result.entries).toContainEqual(expect.objectContaining({ title: 'Recent Update' }));
@@ -62,8 +64,9 @@ describe('buildAutoContext', () => {
     const sharedEntry = makeEntry({ id: 'shared-1', pinned: true, title: 'Both Pinned and Recent' });
 
     manager.getStorage().getAll
-      .mockResolvedValueOnce([sharedEntry])  // pinned query
-      .mockResolvedValueOnce([sharedEntry]); // recent query
+      .mockResolvedValueOnce([sharedEntry])  // pinned
+      .mockResolvedValueOnce([])             // conventions
+      .mockResolvedValueOnce([sharedEntry]); // recent
 
     const result = await buildAutoContext(manager as any, {});
     const ids = result.entries.map(e => e.id);
@@ -76,6 +79,7 @@ describe('buildAutoContext', () => {
 
     manager.getStorage().getAll
       .mockResolvedValueOnce([])  // pinned
+      .mockResolvedValueOnce([])  // conventions
       .mockResolvedValueOnce([]); // recent
 
     const mockProvider = {
@@ -97,8 +101,9 @@ describe('buildAutoContext', () => {
     const pinnedEntry = makeEntry({ pinned: true, title: 'Pinned Only' });
 
     manager.getStorage().getAll
-      .mockResolvedValueOnce([pinnedEntry])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([pinnedEntry])  // pinned
+      .mockResolvedValueOnce([])             // conventions
+      .mockResolvedValueOnce([]);            // recent
     manager.getEmbeddingProvider.mockReturnValue(null);
 
     const result = await buildAutoContext(manager as any, { context: 'some context' });
@@ -113,8 +118,9 @@ describe('buildAutoContext', () => {
     );
 
     manager.getStorage().getAll
-      .mockResolvedValueOnce(entries)
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce(entries)  // pinned
+      .mockResolvedValueOnce([])       // conventions
+      .mockResolvedValueOnce([]);      // recent
 
     const result = await buildAutoContext(manager as any, { limit: 5 });
     expect(result.entries.length).toBeLessThanOrEqual(5);
@@ -130,8 +136,9 @@ describe('buildAutoContext', () => {
     });
 
     manager.getStorage().getAll
-      .mockResolvedValueOnce([])       // pinned query (entry is not pinned)
-      .mockResolvedValueOnce([entry]); // recent query
+      .mockResolvedValueOnce([])       // pinned
+      .mockResolvedValueOnce([])       // conventions
+      .mockResolvedValueOnce([entry]); // recent
 
     const result = await buildAutoContext(manager as any, {});
     expect(result.formatted).toContain('Architecture Decision');

@@ -123,7 +123,8 @@ function computeRoleScore(
   let score = 1.0;
   if (entry.pinned) score += 10; // pinned always first
   if (rolePriority.categories.includes(entry.category)) score *= rolePriority.boost;
-  if (rolePriority.domains.length === 0 || (entry.domain && rolePriority.domains.includes(entry.domain))) {
+  // Domain boost only when role specifies domains (lead has empty = no domain differentiation)
+  if (rolePriority.domains.length > 0 && entry.domain && rolePriority.domains.includes(entry.domain)) {
     score *= rolePriority.boost;
   }
   if (entry.priority === 'critical') score *= 1.3;

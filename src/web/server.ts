@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import type { MemoryManager } from '../memory/manager.js';
 import type { SyncWebSocketServer } from '../sync/websocket.js';
-import type { Category, Priority, Status } from '../memory/types.js';
+import { PROJECT_ROLES } from '../memory/types.js';
 import { ReadParamsSchema, WriteParamsSchema, UpdateParamsSchema, formatZodError } from '../memory/validation.js';
 import { exportEntries, type ExportFormat } from '../export/exporter.js';
 import type { AgentTokenStore } from '../auth/agent-tokens.js';
@@ -397,9 +397,8 @@ export class WebServer {
           res.status(400).json({ success: false, error: 'agent_name is required (1-64 characters)' });
           return;
         }
-        const validRoles = ['developer', 'qa', 'lead', 'devops'];
-        if (role && !validRoles.includes(role)) {
-          res.status(400).json({ success: false, error: 'Invalid role. Must be: developer, qa, lead, or devops' });
+        if (role && !PROJECT_ROLES.includes(role as any)) {
+          res.status(400).json({ success: false, error: `Invalid role. Must be: ${PROJECT_ROLES.join(', ')}` });
           return;
         }
         const result = await this.agentTokenStore.create(agent_name.trim(), role || 'developer');
