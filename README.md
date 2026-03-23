@@ -1,374 +1,227 @@
 # Team Memory MCP Server
 
-MCP сервер для централизованной командной памяти проекта **Moorinet 2.0**. Позволяет всем агентам Claude Code в команде обмениваться информацией о состоянии проекта в реальном времени.
+[![CI](https://github.com/malinkaboy/MCP-Team-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/malinkaboy/MCP-Team-memory/actions/workflows/ci.yml)
 
-## Возможности
+Shared team memory for AI coding agents. A [Model Context Protocol](https://modelcontextprotocol.io/) server that gives Claude Code (and other MCP clients) persistent, searchable, real-time team knowledge.
 
-- **Единая память команды** - все агенты Claude Code имеют доступ к общей базе знаний
-- **5 категорий памяти**: Архитектура, Задачи, Решения, Проблемы, Прогресс
-- **Real-time синхронизация** через WebSocket
-- **Web UI Dashboard** для мониторинга и управления
-- **Автоматические бэкапы** JSON хранилища
-- **Полнотекстовый поиск** по всем записям
+## Why
 
----
+When multiple developers use AI agents on the same codebase, each agent starts with zero context. Team Memory fixes this: every architectural decision, task, bug report, and convention is stored centrally and surfaced automatically based on the agent's role.
 
-## Быстрый старт
+## Features
 
-### Через npx (рекомендуется)
+- **14 MCP tools** — read, write, search, sync, pin, export, conventions, onboarding, cross-project search
+- **PostgreSQL + pgvector** — full-text search with Russian/English stemming, hybrid vector + FTS search
+- **Agent identity** — per-agent tokens, unforgeable author attribution, project roles (developer/qa/lead/devops)
+- **Role-aware auto-recall** — agents receive context prioritized for their role (developers see architecture first, QA sees bugs first)
+- **Web UI dashboard** — real-time monitoring, knowledge graph, entry management, agent admin panel
+- **Real-time sync** — WebSocket-based live updates across all connected agents
+- **6 categories** — architecture, tasks, decisions, issues, progress, conventions
+- **Smart features** — conflict resolution (optimistic locking), memory decay, auto-archival, version history
 
-```bash
-npx @anthropic-team/team-memory-mcp
-```
+## Quick Start
 
-Или глобально:
-
-```bash
-npm install -g @anthropic-team/team-memory-mcp
-team-memory-mcp
-```
-
-### Из исходников
+### 1. Start PostgreSQL
 
 ```bash
-cd team-memory-mcp
-npm install
-npm run build
+docker compose up -d postgres
 ```
 
-### 2. Настройка Claude Code
+### 2. Configure Claude Code
 
-Добавьте в файл `~/.claude/settings.json` (или `.claude/settings.local.json` в проекте):
+Add to `.claude/settings.json`:
 
 ```json
 {
   "mcpServers": {
     "team-memory": {
       "command": "node",
-      "args": ["D:/Moorinet 2.0/team-memory-mcp/dist/index.js"]
-    }
-  }
-}
-```
-
-### 3. Перезапустите Claude Code
-
-После добавления конфигурации перезапустите IDE или Claude Code CLI.
-
-### 4. (Опционально) Запуск Web UI Dashboard
-
-**Важно:** MCP сервер и Web UI — это **два разных процесса**.
-
-- `npm start` — запускает только MCP сервер (stdio протокол для Claude Code)
-- `npm run start:web` — запускает Web UI Dashboard с WebSocket
-
-Если вам нужен Web Dashboard для визуального мониторинга:
-
-```bash
-# В отдельном терминале
-cd team-memory-mcp
-npm run start:web
-```
-
-После этого Web UI будет доступен по адресу: `http://localhost:3846`
-
-### 5. Проверка работы
-
-В Claude Code выполните:
-```
-Прочитай командную память проекта
-```
-
-Агент должен использовать `memory_read` и показать записи.
-
----
-
-## Доступные инструменты (MCP Tools)
-
-### `memory_read` - Чтение памяти
-
-Читает записи из командной памяти.
-
-| Параметр | Тип | Описание |
-|----------|-----|----------|
-| `category` | string | `all`, `architecture`, `tasks`, `decisions`, `issues`, `progress` |
-| `search` | string | Поисковый запрос |
-| `limit` | number | Максимум записей (по умолчанию 50) |
-| `status` | string | `active`, `completed`, `archived` |
-
-**Примеры использования:**
-```
-- Покажи все активные задачи
-- Найди записи про React
-- Какие решения были приняты?
-```
-
-### `memory_write` - Добавление записи
-
-Создаёт новую запись в памяти.
-
-| Параметр | Обязательный | Описание |
-|----------|--------------|----------|
-| `category` | Да | Категория записи |
-| `title` | Да | Заголовок |
-| `content` | Да | Содержимое |
-| `tags` | Нет | Массив тегов |
-| `priority` | Нет | `low`, `medium`, `high`, `critical` |
-| `author` | Нет | Имя автора |
-| `pinned` | Нет | 📌 Закрепить (не будет автоархивирована) |
-
-**Пример:**
-```
-Запиши решение: выбран Zustand для state management
-Запиши и закрепи: утверждённый технологический стек
-```
-
-### `memory_update` - Обновление записи
-
-Обновляет существующую запись.
-
-| Параметр | Описание |
-|----------|----------|
-| `id` | ID записи (обязательный) |
-| `title`, `content`, `status`, `tags`, `priority` | Новые значения |
-| `pinned` | 📌 Закрепить/открепить запись |
-
-### `memory_delete` - Архивация/удаление
-
-| Параметр | Описание |
-|----------|----------|
-| `id` | ID записи |
-| `archive` | `true` - архивировать, `false` - удалить навсегда |
-
-### `memory_unarchive` - Разархивация
-
-Восстанавливает архивированную запись в активный статус.
-
-| Параметр | Описание |
-|----------|----------|
-| `id` | ID записи для разархивации |
-
-**Пример:**
-```
-Разархивируй запись с ID abc-123
-```
-
-### `memory_sync` - Синхронизация
-
-Получает изменения в памяти за период.
-
-| Параметр | Описание |
-|----------|----------|
-| `since` | ISO дата начала периода (по умолчанию 24 часа) |
-
-### `memory_pin` - Закрепление записи
-
-Закрепляет или открепляет запись. **Закреплённые записи НЕ архивируются автоматически.**
-
-| Параметр | Описание |
-|----------|----------|
-| `id` | ID записи |
-| `pinned` | `true` - закрепить, `false` - открепить |
-
-**Пример:**
-```
-Закрепи запись с технологическим стеком
-```
-
-**Когда закреплять:**
-- Утверждённый технологический стек
-- Ключевые архитектурные решения
-- Важные соглашения команды
-- Всё, что актуально на протяжении всего проекта
-
----
-
-## Автоархивация
-
-Записи старше **14 дней** автоматически перемещаются в архив, кроме:
-- 📌 Закреплённых записей (`pinned: true`)
-- Уже архивированных записей
-
-**Перед архивацией создаётся бэкап.**
-
-Настройка через переменные окружения:
-```bash
-MEMORY_AUTO_ARCHIVE=true        # Включить (по умолчанию)
-MEMORY_AUTO_ARCHIVE_DAYS=14     # Порог в днях
-```
-
----
-
-## Категории памяти
-
-| Категория | Иконка | Описание |
-|-----------|--------|----------|
-| `architecture` | 🏗️ | Стек технологий, структура проекта, паттерны |
-| `tasks` | 📋 | Текущие задачи, в работе, запланированные |
-| `decisions` | ✅ | Принятые решения и их обоснование |
-| `issues` | 🐛 | Известные проблемы, баги, тех. долг |
-| `progress` | 📈 | Завершённые этапы, milestone |
-
-## Приоритеты
-
-| Приоритет | Цвет | Использование |
-|-----------|------|---------------|
-| `critical` | 🔴 | Срочные блокеры |
-| `high` | 🟠 | Важные задачи |
-| `medium` | 🟡 | Стандартный приоритет |
-| `low` | 🟢 | Можно отложить |
-
-## Статусы
-
-| Статус | Описание |
-|--------|----------|
-| `active` | Активная запись |
-| `completed` | Завершённая задача |
-| `archived` | Архивированная (скрыта по умолчанию) |
-
----
-
-## Web UI Dashboard
-
-⚠️ **Важно:** Web UI запускается **отдельно** от MCP сервера!
-
-```bash
-# В отдельном терминале
-cd team-memory-mcp
-npm run start:web
-```
-
-После запуска, Web UI доступен по адресу:
-
-```
-http://localhost:3846
-```
-
-**Возможности:**
-- Просмотр всех записей с фильтрацией
-- Добавление и редактирование записей
-- Поиск по содержимому
-- Создание бэкапов
-- Мониторинг подключённых агентов
-
----
-
-## Структура проекта
-
-```
-team-memory-mcp/
-├── src/
-│   ├── index.ts              # Точка входа
-│   ├── server.ts             # MCP Server (инструменты)
-│   ├── standalone-web.ts     # Standalone Web сервер
-│   ├── memory/
-│   │   ├── types.ts          # TypeScript типы
-│   │   └── manager.ts        # Менеджер памяти
-│   ├── storage/
-│   │   ├── index.ts          # Экспорт storage
-│   │   └── json-storage.ts   # JSON хранилище с блокировками
-│   ├── sync/
-│   │   └── websocket.ts      # WebSocket для real-time
-│   └── web/
-│       ├── server.ts         # Express API
-│       └── public/           # HTML/CSS/JS для UI
-├── data/
-│   ├── memory.json           # Основное хранилище
-│   └── backups/              # Автоматические бэкапы
-├── dist/                     # Скомпилированный код
-├── package.json
-└── tsconfig.json
-```
-
----
-
-## Переменные окружения
-
-| Переменная | По умолчанию | Описание |
-|------------|--------------|----------|
-| `MEMORY_DATA_PATH` | `./data` | Путь к данным |
-| `MEMORY_WEB_PORT` | `3846` | Порт Web UI |
-| `MEMORY_WS_PORT` | `3847` | Порт WebSocket |
-| `MEMORY_SYNC_MODE` | `both` | `auto`, `manual`, `both` |
-| `MEMORY_ENABLE_WEB` | `true` | Включить Web UI |
-| `MEMORY_AUTO_BACKUP` | `true` | Автобэкапы |
-| `MEMORY_BACKUP_INTERVAL` | `3600000` | Интервал бэкапов (мс) |
-| `MEMORY_AUTO_ARCHIVE` | `true` | Автоархивация старых записей |
-| `MEMORY_AUTO_ARCHIVE_DAYS` | `14` | Порог для автоархивации (дни) |
-| `MEMORY_FTS_LANGUAGE` | `simple` | Язык полнотекстового поиска PostgreSQL (`simple`, `russian`, `english`, `german` и др.). Используйте `russian` для корректного стемминга русскоязычных записей. |
-
----
-
-## Команды разработки
-
-```bash
-# Сборка
-npm run build
-
-# Запуск MCP сервера (stdio, для Claude Code)
-npm start
-
-# Запуск Web UI Dashboard (в отдельном терминале!)
-npm run start:web
-
-# Разработка (сборка + запуск)
-npm run dev
-
-# Очистка dist/
-npm run clean
-```
-
-### Типичный сценарий работы
-
-1. **Настройте Claude Code** (см. Быстрый старт)
-2. **Если нужен Web Dashboard:**
-   ```bash
-   # Откройте отдельный терминал
-   cd team-memory-mcp
-   npm run start:web
-   ```
-3. **Работайте с Claude Code** — MCP сервер запустится автоматически
-
----
-
-## Сетевое развёртывание (несколько машин)
-
-### Серверная машина:
-
-```bash
-npm start
-# Web UI: http://localhost:3846
-# WebSocket: ws://localhost:3847
-```
-
-### Клиентские машины:
-
-В `.claude/settings.json`:
-```json
-{
-  "mcpServers": {
-    "team-memory": {
-      "command": "node",
-      "args": ["path/to/team-memory-mcp/dist/index.js"],
+      "args": ["/path/to/team-memory-mcp/dist/index.js"],
       "env": {
-        "MEMORY_HOST": "192.168.1.100"
+        "DATABASE_URL": "postgresql://memory:memory@localhost:5432/team_memory"
       }
     }
   }
 }
 ```
 
+### 3. HTTP mode (Web UI + remote access)
+
+```bash
+DATABASE_URL="postgresql://memory:memory@localhost:5432/team_memory" \
+MEMORY_TRANSPORT=http \
+node dist/index.js
+```
+
+Open `http://localhost:3846` for the dashboard.
+
+### 4. Docker Compose (full stack)
+
+```bash
+docker compose up -d
+```
+
+## MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `memory_read` | Read entries with filters (category, domain, search, tags) |
+| `memory_write` | Create a new entry |
+| `memory_update` | Update an existing entry (with optimistic locking) |
+| `memory_delete` | Archive or permanently delete |
+| `memory_unarchive` | Restore archived entries |
+| `memory_sync` | Get changes since a timestamp |
+| `memory_pin` | Pin/unpin entries (pinned entries skip auto-archive) |
+| `memory_export` | Export entries as markdown or JSON |
+| `memory_search` | Semantic vector search |
+| `memory_conventions` | Manage project conventions (add/list/remove) |
+| `memory_onboard` | Generate project summary for new team members |
+| `memory_cross_search` | Search across all projects |
+
+## Agent Identity & Roles
+
+Each team member gets a personal token (`tm_...`). The author field is set automatically from the token — no spoofing possible.
+
+**System access:**
+- Master token (`MEMORY_API_TOKEN` in `.env`) = admin, manages tokens via Web UI
+- Agent tokens = user-level access
+
+**Project roles** (soft bias for auto-recall ordering):
+
+| Role | Prioritized Categories | Domains |
+|------|----------------------|---------|
+| `developer` | architecture, decisions, conventions | backend, frontend, database |
+| `qa` | issues, tasks, conventions | testing |
+| `lead` | progress, tasks, decisions | all |
+| `devops` | architecture, tasks | infrastructure, devops |
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | — | PostgreSQL connection string (required) |
+| `MEMORY_TRANSPORT` | `stdio` | `stdio` (Claude Code CLI) or `http` (Web UI + remote) |
+| `MEMORY_PORT` | `3846` | HTTP server port |
+| `MEMORY_API_TOKEN` | — | Master token (enables auth when set) |
+| `MEMORY_FTS_LANGUAGE` | `simple` | PostgreSQL FTS config (`russian`, `english`, etc.) |
+| `MEMORY_EMBEDDING_PROVIDER` | — | `gemini` or `local` (ONNX) |
+| `GEMINI_API_KEY` | — | Google Gemini API key for embeddings |
+| `MEMORY_AUTO_ARCHIVE` | `true` | Enable auto-archival |
+| `MEMORY_AUTO_ARCHIVE_DAYS` | `14` | Days before auto-archive |
+| `MEMORY_CORS_ORIGIN` | `*` | CORS origin for production |
+
+## Development
+
+```bash
+npm install
+npm run build
+npm test          # 109 tests
+```
+
+## Security
+
+- `crypto.timingSafeEqual` for all token comparisons
+- Parameterized SQL queries (no SQL injection)
+- CSP headers, XSS escaping, ILIKE sanitization
+- FTS language validated against allowlist
+- WebSocket rename blocked for token-authenticated agents
+- See [Security section](#безопасность) below for HTTPS setup
+
+## License
+
+MIT
+
 ---
+
+# Документация на русском
+
+## Возможности
+
+- **14 MCP-инструментов** — чтение, запись, поиск, синхронизация, закрепление, экспорт, конвенции, онбординг, кросс-проектный поиск
+- **PostgreSQL + pgvector** — полнотекстовый поиск со стеммингом (русский/английский), гибридный vector + FTS поиск
+- **Идентификация агентов** — персональные токены, неподделываемый author, проектные роли (разработчик/тестировщик/руководитель/devops)
+- **Ролевой auto-recall** — агенты получают контекст, приоритизированный под их роль
+- **Web UI дашборд** — мониторинг в реальном времени, граф знаний, управление записями, панель администратора
+- **Real-time синхронизация** — WebSocket для live-обновлений между агентами
+- **6 категорий** — архитектура, задачи, решения, проблемы, прогресс, конвенции
+- **Smart-фичи** — разрешение конфликтов (optimistic locking), decay памяти, автоархивация, история версий
+
+## Быстрый старт
+
+### 1. Запуск PostgreSQL
+
+```bash
+docker compose up -d postgres
+```
+
+### 2. Настройка Claude Code
+
+Добавьте в `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "team-memory": {
+      "command": "node",
+      "args": ["/путь/к/team-memory-mcp/dist/index.js"],
+      "env": {
+        "DATABASE_URL": "postgresql://memory:memory@localhost:5432/team_memory"
+      }
+    }
+  }
+}
+```
+
+### 3. HTTP-режим (Web UI + удалённый доступ)
+
+```bash
+DATABASE_URL="postgresql://memory:memory@localhost:5432/team_memory" \
+MEMORY_TRANSPORT=http \
+node dist/index.js
+```
+
+Дашборд: `http://localhost:3846`
+
+## Идентификация агентов
+
+Каждый член команды получает персональный токен (`tm_...`). Автор записи устанавливается автоматически из токена.
+
+**Системный доступ:**
+- Master token (`MEMORY_API_TOKEN` в `.env`) = администратор, управляет токенами через Web UI
+- Agent tokens = пользователь
+
+**Проектные роли** (мягкая приоритизация auto-recall):
+
+| Роль | Приоритетные категории | Домены |
+|------|----------------------|--------|
+| Разработчик | архитектура, решения, конвенции | backend, frontend, database |
+| Тестировщик | проблемы, задачи, конвенции | testing |
+| Руководитель | прогресс, задачи, решения | все |
+| DevOps | архитектура, задачи | infrastructure, devops |
+
+## Переменные окружения
+
+| Переменная | По умолчанию | Описание |
+|------------|--------------|----------|
+| `DATABASE_URL` | — | Строка подключения PostgreSQL (обязательно) |
+| `MEMORY_TRANSPORT` | `stdio` | `stdio` (Claude Code CLI) или `http` (Web UI + удалённый) |
+| `MEMORY_PORT` | `3846` | Порт HTTP-сервера |
+| `MEMORY_API_TOKEN` | — | Master токен (включает auth при установке) |
+| `MEMORY_FTS_LANGUAGE` | `simple` | Конфигурация FTS (`russian`, `english` и др.) |
+| `MEMORY_EMBEDDING_PROVIDER` | — | `gemini` или `local` (ONNX) |
+| `GEMINI_API_KEY` | — | API-ключ Google Gemini для эмбеддингов |
+| `MEMORY_AUTO_ARCHIVE` | `true` | Автоархивация |
+| `MEMORY_AUTO_ARCHIVE_DAYS` | `14` | Дней до автоархивации |
+| `MEMORY_CORS_ORIGIN` | `*` | CORS origin для production |
 
 ## Безопасность
 
 ### Credentials
 
-**Не используйте дефолтные пароли в production!** Скопируйте `.env.example` в `.env` и измените `POSTGRES_PASSWORD`:
+**Не используйте дефолтные пароли в production!** Скопируйте `.env.example` в `.env` и измените пароли:
 
 ```bash
 cp .env.example .env
-# Отредактируйте .env — обязательно смените POSTGRES_PASSWORD
 ```
 
 ### HTTPS (reverse proxy)
@@ -398,31 +251,14 @@ server {
 }
 ```
 
-### WebSocket authentication
+## Разработка
 
-Предпочитайте `Authorization: Bearer <token>` header. Query parameter `?token=` поддерживается как fallback для клиентов, не умеющих устанавливать заголовки, но токен может попасть в access-логи.
-
----
-
-## Troubleshooting
-
-### MCP сервер не запускается
-
-1. Проверьте путь в `settings.json`
-2. Убедитесь что `npm run build` выполнен
-3. Проверьте версию Node.js (требуется >= 20.0.0)
-
-### Записи не сохраняются
-
-1. Проверьте права на запись в папку `data/`
-2. Убедитесь что файл `memory.json` не заблокирован
-
-### Web UI не открывается
-
-1. Проверьте что порт 3846 свободен
-2. Попробуйте другой порт через `MEMORY_WEB_PORT`
-
----
+```bash
+npm install
+npm run build
+npm test          # 109 тестов
+npm run clean     # очистка dist/
+```
 
 ## Лицензия
 
