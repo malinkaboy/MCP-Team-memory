@@ -1443,6 +1443,43 @@ select:focus {
   gap: 8px;
 }
 
+.graph-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  width: 220px;
+  transition: border-color 0.2s;
+}
+
+.graph-search:focus-within {
+  border-color: var(--accent-primary);
+}
+
+.graph-search [data-lucide] {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.graph-search input {
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--font-primary);
+  font-size: 13px;
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.graph-search input::placeholder {
+  color: var(--text-muted);
+}
+
 .btn-sm {
   padding: 6px 12px;
   font-size: 12px;
