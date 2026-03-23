@@ -246,6 +246,7 @@
   border-color: var(--accent-primary);
 }
 
+/* Sport: all elements with volt (#CCFF00) background get black text */
 [data-theme="sport"] .nav-item.active {
   background: var(--accent-primary);
   color: #0A0A0A;
@@ -257,9 +258,19 @@
   color: #0A0A0A;
 }
 
+[data-theme="sport"] .nav-item.active .nav-icon {
+  color: #0A0A0A;
+}
+
 [data-theme="sport"] .btn-primary,
 [data-theme="sport"] .btn-add {
   background: var(--accent-primary);
+  color: #0A0A0A;
+}
+
+[data-theme="sport"] .btn-primary:hover,
+[data-theme="sport"] .btn-add:hover {
+  background: var(--accent-hover);
   color: #0A0A0A;
 }
 
@@ -267,13 +278,16 @@
   color: var(--text-primary);
 }
 
+[data-theme="sport"] .domain-pill.active {
+  color: #0A0A0A;
+}
+
 [data-theme="sport"] .filter-pill.active {
   color: #0A0A0A;
 }
 
-[data-theme="sport"] .btn-primary:hover,
-[data-theme="sport"] .btn-add:hover {
-  background: var(--accent-hover);
+[data-theme="sport"] .custom-select-option.selected {
+  color: #0A0A0A;
 }
 
 [data-theme="sport"] .entry-badge {
@@ -283,6 +297,24 @@
 
 [data-theme="sport"] .stat-value {
   font-family: 'Anton', sans-serif;
+}
+
+[data-theme="sport"] .logo-text {
+  -webkit-text-fill-color: var(--accent-primary);
+}
+
+[data-theme="sport"] .toast.success {
+  color: #0A0A0A;
+}
+
+[data-theme="sport"] .theme-row.active {
+  border-color: var(--accent-primary);
+  background: rgba(204, 255, 0, 0.06);
+}
+
+[data-theme="sport"] .theme-row.selected {
+  border-color: var(--accent-hover);
+  background: rgba(204, 255, 0, 0.04);
 }
 
 /* --- Dashboard: structural overrides --- */
