@@ -246,12 +246,31 @@
         <label>Имя агента
           <input type="text" id="new-agent-name" placeholder="Иван Иванов" maxlength="64" />
         </label>
-        <label>Роль
-          <select id="new-agent-role">
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
-          </select>
-        </label>
+        <label>Роль</label>
+        <div class="custom-select custom-select--compact" id="role-select">
+          <button class="custom-select-trigger" type="button">
+            <span class="custom-select-value" data-role="developer"><i data-lucide="code-2"></i> Разработчик</span>
+            <i data-lucide="chevron-down" class="custom-select-arrow"></i>
+          </button>
+          <div class="custom-select-options" id="role-options">
+            <div class="custom-select-option selected" data-value="developer" data-icon="code-2">
+              <span class="custom-select-option-name"><i data-lucide="code-2"></i> Разработчик</span>
+              <span class="custom-select-option-desc">Архитектура, решения, код</span>
+            </div>
+            <div class="custom-select-option" data-value="qa" data-icon="bug">
+              <span class="custom-select-option-name"><i data-lucide="bug"></i> Тестировщик</span>
+              <span class="custom-select-option-desc">Баги, задачи, тестирование</span>
+            </div>
+            <div class="custom-select-option" data-value="lead" data-icon="crown">
+              <span class="custom-select-option-name"><i data-lucide="crown"></i> Руководитель</span>
+              <span class="custom-select-option-desc">Прогресс, задачи, решения</span>
+            </div>
+            <div class="custom-select-option" data-value="devops" data-icon="container">
+              <span class="custom-select-option-name"><i data-lucide="container"></i> DevOps</span>
+              <span class="custom-select-option-desc">Инфраструктура, деплой</span>
+            </div>
+          </div>
+        </div>
         <div class="agents-create-actions">
           <button class="btn btn-secondary btn-sm" id="btn-cancel-agent">Отмена</button>
           <button class="btn btn-primary btn-sm" id="btn-confirm-agent">Создать</button>

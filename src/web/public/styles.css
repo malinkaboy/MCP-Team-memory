@@ -213,6 +213,13 @@ body {
   font-size: 13px;
   color: var(--text-primary);
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.custom-select-option-name svg {
+  width: 14px;
+  height: 14px;
 }
 
 .custom-select-option.selected .custom-select-option-name {
@@ -241,6 +248,8 @@ body {
   min-width: 100%;
   right: 0;
   left: auto;
+  max-height: none;
+  overflow-y: visible;
 }
 
 .btn-icon {
@@ -1897,13 +1906,26 @@ select:focus {
   font-weight: 600;
   text-transform: uppercase;
 }
-.agent-role-badge.admin {
-  background: rgba(139, 92, 246, 0.15);
-  color: var(--accent-primary);
+.agent-role-badge svg {
+  width: 12px;
+  height: 12px;
+  vertical-align: -1px;
 }
-.agent-role-badge.member {
-  background: rgba(99, 102, 241, 0.1);
-  color: var(--priority-medium);
+.agent-role-badge.developer {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+.agent-role-badge.qa {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+.agent-role-badge.lead {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+}
+.agent-role-badge.devops {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
 }
 
 .agents-actions {
@@ -1955,7 +1977,7 @@ select:focus {
 }
 
 .agent-token-row td {
-  padding: 0 12px 12px !important;
+  padding: 8px 12px 12px !important;
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-primary);
 }

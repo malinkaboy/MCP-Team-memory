@@ -1,12 +1,13 @@
 import type { MemoryManager } from './memory/manager.js';
-import type { MemoryEntry } from './memory/types.js';
-import { DEFAULT_PROJECT_ID } from './memory/types.js';
+import type { MemoryEntry, Category, ProjectRole } from './memory/types.js';
+import { DEFAULT_PROJECT_ID, PROJECT_ROLES, ROLE_PRIORITIES } from './memory/types.js';
 import logger from './logger.js';
 
 export interface AutoContextOptions {
   projectId?: string;
   context?: string;  // Current task description for semantic matching
   limit?: number;
+  agentRole?: string; // ProjectRole for soft bias, or undefined for no bias
 }
 
 export interface AutoContextResult {
@@ -100,6 +101,12 @@ export async function buildAutoContext(
     }
   }
 
+  // Role-aware reordering: boost entries matching role's priority categories/domains
+  if (opts.agentRole && PROJECT_ROLES.includes(opts.agentRole as ProjectRole)) {
+    const rolePriority = ROLE_PRIORITIES[opts.agentRole as ProjectRole];
+    allEntries.sort((a, b) => computeRoleScore(b, rolePriority) - computeRoleScore(a, rolePriority));
+  }
+
   // Trim to limit
   const entries = allEntries.slice(0, limit);
 
@@ -107,6 +114,21 @@ export async function buildAutoContext(
   const formatted = formatAutoContext(entries);
 
   return { entries, formatted };
+}
+
+function computeRoleScore(
+  entry: MemoryEntry,
+  rolePriority: { categories: Category[]; domains: string[]; boost: number }
+): number {
+  let score = 1.0;
+  if (entry.pinned) score += 10; // pinned always first
+  if (rolePriority.categories.includes(entry.category)) score *= rolePriority.boost;
+  if (rolePriority.domains.length === 0 || (entry.domain && rolePriority.domains.includes(entry.domain))) {
+    score *= rolePriority.boost;
+  }
+  if (entry.priority === 'critical') score *= 1.3;
+  else if (entry.priority === 'high') score *= 1.1;
+  return score;
 }
 
 function formatAutoContext(entries: MemoryEntry[]): string {

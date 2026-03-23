@@ -92,7 +92,7 @@ async function main(): Promise<void> {
     res.json({
       authenticated: true,
       agentName: req.agentName || null,
-      role: req.agentRole || (isMaster ? 'admin' : 'member'),
+      role: req.agentRole || null, // project role from token, null for master
       isMaster,
     });
   });

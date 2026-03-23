@@ -29,6 +29,24 @@ export const DEFAULT_DOMAINS: string[] = [
   'testing',
 ];
 
+// Project roles — soft bias for auto-recall ordering
+export type ProjectRole = 'developer' | 'qa' | 'lead' | 'devops';
+export const PROJECT_ROLES: ProjectRole[] = ['developer', 'qa', 'lead', 'devops'];
+
+export const ROLE_PRIORITIES: Record<ProjectRole, { categories: Category[]; domains: string[]; boost: number }> = {
+  developer: { categories: ['architecture', 'decisions', 'conventions'], domains: ['backend', 'frontend', 'database'], boost: 1.5 },
+  qa:        { categories: ['issues', 'tasks', 'conventions'], domains: ['testing'], boost: 1.5 },
+  lead:      { categories: ['progress', 'tasks', 'decisions'], domains: [], boost: 1.3 },
+  devops:    { categories: ['architecture', 'tasks'], domains: ['infrastructure', 'devops'], boost: 1.5 },
+};
+
+export const ROLE_INFO: Record<ProjectRole, { name: string; nameEn: string; icon: string }> = {
+  developer: { name: 'Разработчик', nameEn: 'Developer', icon: '💻' },
+  qa:        { name: 'Тестировщик', nameEn: 'QA',        icon: '🧪' },
+  lead:      { name: 'Руководитель', nameEn: 'Lead',      icon: '👔' },
+  devops:    { name: 'DevOps',      nameEn: 'DevOps',    icon: '⚙️' },
+};
+
 // Проект
 export interface Project {
   id: string;

@@ -668,7 +668,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
     };
   });
 
-  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  server.setRequestHandler(GetPromptRequestSchema, async (request, extra) => {
     const { name, arguments: promptArgs } = request.params;
 
     if (name !== 'auto-context') {
@@ -680,11 +680,13 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       const context = promptArgs?.context;
       const parsed = promptArgs?.limit ? parseInt(promptArgs.limit, 10) : 10;
       const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+      const callerRole = (extra as any)?.authInfo?.scopes?.[0] as string | undefined;
 
       const result = await buildAutoContext(memoryManager, {
         projectId,
         context,
         limit,
+        agentRole: callerRole,
       });
 
       return {

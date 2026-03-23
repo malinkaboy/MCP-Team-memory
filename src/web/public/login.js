@@ -34,7 +34,7 @@ async function tryLogin(token) {
       localStorage.setItem('auth-token', token);
 
       if (data.agentName) {
-        agentEl.textContent = `${data.agentName} (${data.role})`;
+        agentEl.textContent = `${data.agentName} (${data.role || 'agent'})`;
         agentEl.style.display = 'block';
       }
 

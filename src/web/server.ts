@@ -7,6 +7,7 @@ import type { Category, Priority, Status } from '../memory/types.js';
 import { ReadParamsSchema, WriteParamsSchema, UpdateParamsSchema, formatZodError } from '../memory/validation.js';
 import { exportEntries, type ExportFormat } from '../export/exporter.js';
 import type { AgentTokenStore } from '../auth/agent-tokens.js';
+import { buildAutoContext } from '../recall.js';
 import logger from '../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -335,6 +336,30 @@ export class WebServer {
       }
     });
 
+    // Auto-recall endpoint (role-aware context)
+    app.get('/api/recall', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.query.project_id as string | undefined;
+        const context = req.query.context as string | undefined;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const result = await buildAutoContext(this.memoryManager, {
+          projectId,
+          context,
+          limit,
+          agentRole: req.agentRole,
+        });
+        res.json({
+          success: true,
+          role: req.agentRole || null,
+          count: result.entries.length,
+          entries: result.entries.map(e => ({ category: e.category, domain: e.domain, title: e.title, priority: e.priority, pinned: e.pinned })),
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'API error');
+        res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    });
+
     // === Agent Tokens REST API ===
 
     const requireAdmin = (req: Request, res: Response): boolean => {
@@ -372,12 +397,12 @@ export class WebServer {
           res.status(400).json({ success: false, error: 'agent_name is required (1-64 characters)' });
           return;
         }
-        const validRoles = ['admin', 'member'];
+        const validRoles = ['developer', 'qa', 'lead', 'devops'];
         if (role && !validRoles.includes(role)) {
-          res.status(400).json({ success: false, error: 'Invalid role. Must be: admin or member' });
+          res.status(400).json({ success: false, error: 'Invalid role. Must be: developer, qa, lead, or devops' });
           return;
         }
-        const result = await this.agentTokenStore.create(agent_name.trim(), role || 'member');
+        const result = await this.agentTokenStore.create(agent_name.trim(), role || 'developer');
         res.json({ success: true, ...result });
       } catch (error) {
         logger.error({ err: error }, 'API error');

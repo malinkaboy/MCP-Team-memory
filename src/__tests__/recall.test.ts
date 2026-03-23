@@ -139,6 +139,70 @@ describe('buildAutoContext', () => {
   });
 });
 
+describe('buildAutoContext with role bias', () => {
+  it('developer role boosts architecture entries above issues', async () => {
+    const manager = createMockManager();
+    const archEntry = makeEntry({ category: 'architecture', title: 'Arch Decision', domain: 'backend' });
+    const issueEntry = makeEntry({ category: 'issues', title: 'Bug Report', domain: 'testing' });
+
+    manager.getStorage().getAll
+      .mockResolvedValueOnce([])                      // pinned
+      .mockResolvedValueOnce([])                      // conventions
+      .mockResolvedValueOnce([issueEntry, archEntry]); // recent
+
+    const result = await buildAutoContext(manager as any, { agentRole: 'developer' });
+    expect(result.entries[0].title).toBe('Arch Decision');
+    expect(result.entries[1].title).toBe('Bug Report');
+  });
+
+  it('qa role boosts issues entries above architecture', async () => {
+    const manager = createMockManager();
+    const archEntry = makeEntry({ category: 'architecture', title: 'Arch Decision', domain: 'backend' });
+    const issueEntry = makeEntry({ category: 'issues', title: 'Bug Report', domain: 'testing' });
+
+    manager.getStorage().getAll
+      .mockResolvedValueOnce([])                      // pinned
+      .mockResolvedValueOnce([])                      // conventions
+      .mockResolvedValueOnce([archEntry, issueEntry]); // recent
+
+    const result = await buildAutoContext(manager as any, { agentRole: 'qa' });
+    expect(result.entries[0].title).toBe('Bug Report');
+    expect(result.entries[1].title).toBe('Arch Decision');
+  });
+
+  it('does not filter out any entries — all present, just reordered', async () => {
+    const manager = createMockManager();
+    const entries = [
+      makeEntry({ category: 'progress', title: 'Progress' }),
+      makeEntry({ category: 'architecture', title: 'Arch' }),
+      makeEntry({ category: 'issues', title: 'Issue' }),
+    ];
+
+    manager.getStorage().getAll
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(entries);
+
+    const result = await buildAutoContext(manager as any, { agentRole: 'developer' });
+    expect(result.entries).toHaveLength(3);
+  });
+
+  it('invalid role (e.g. admin) does not reorder or crash', async () => {
+    const manager = createMockManager();
+    const entry1 = makeEntry({ category: 'issues', title: 'First' });
+    const entry2 = makeEntry({ category: 'architecture', title: 'Second' });
+
+    manager.getStorage().getAll
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([entry1, entry2]);
+
+    const result = await buildAutoContext(manager as any, { agentRole: 'admin' });
+    expect(result.entries).toHaveLength(2);
+    expect(result.entries[0].title).toBe('First'); // no reordering
+  });
+});
+
 describe('MCP Server auto-context prompt', () => {
   it('builds server with prompts capability without error', () => {
     const manager = createMockManager();

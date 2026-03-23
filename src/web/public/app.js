@@ -1142,6 +1142,14 @@ function initAgentsPanel() {
   if (createBtn) createBtn.addEventListener('click', () => {
     document.getElementById('agents-create-modal').style.display = 'flex';
     document.getElementById('new-agent-name').value = '';
+    // Reset role dropdown to developer
+    const roleSelect = document.getElementById('role-select');
+    if (roleSelect) {
+      roleSelect.querySelector('.custom-select-value').innerHTML = '<i data-lucide="code-2"></i> Разработчик';
+      roleSelect.querySelector('.custom-select-value').dataset.role = 'developer';
+      roleSelect.querySelectorAll('.custom-select-option').forEach(o => o.classList.toggle('selected', o.dataset.value === 'developer'));
+    }
+    lucide.createIcons();
     document.getElementById('new-agent-name').focus();
   });
 
@@ -1159,6 +1167,30 @@ function initAgentsPanel() {
     const token = document.getElementById('revealed-token').textContent;
     navigator.clipboard.writeText(token).then(() => showToast('Токен скопирован', 'success'));
   });
+
+  // Custom role dropdown
+  const roleSelect = document.getElementById('role-select');
+  if (roleSelect) {
+    const trigger = roleSelect.querySelector('.custom-select-trigger');
+    const options = roleSelect.querySelectorAll('.custom-select-option');
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      roleSelect.classList.toggle('open');
+    });
+    options.forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        options.forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        const val = roleSelect.querySelector('.custom-select-value');
+        val.innerHTML = opt.querySelector('.custom-select-option-name').innerHTML;
+        val.dataset.role = opt.dataset.value;
+        roleSelect.classList.remove('open');
+        lucide.createIcons();
+      });
+    });
+    document.addEventListener('click', () => roleSelect.classList.remove('open'));
+  }
 
   // Event delegation for agents table (CSP-compatible, no inline handlers)
   const tbody = document.getElementById('agents-tbody');
@@ -1206,7 +1238,11 @@ async function loadAgents() {
 
     tbody.innerHTML = data.tokens.map(t => {
       const statusDot = t.isActive ? '<span class="agent-status-dot active"></span>Активен' : '<span class="agent-status-dot inactive"></span>Отключён';
-      const roleBadge = `<span class="agent-role-badge ${escapeHtml(t.role)}">${escapeHtml(t.role)}</span>`;
+      const roleIcons = { developer: 'code-2', qa: 'bug', lead: 'crown', devops: 'container' };
+      const roleNames = { developer: 'Разработчик', qa: 'Тестировщик', lead: 'Руководитель', devops: 'DevOps' };
+      const roleIcon = roleIcons[t.role] || 'user';
+      const roleLabel = roleNames[t.role] || escapeHtml(t.role);
+      const roleBadge = `<span class="agent-role-badge ${escapeHtml(t.role)}"><i data-lucide="${roleIcon}"></i> ${roleLabel}</span>`;
       const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString('ru-RU') : '—';
       const lastUsed = t.lastUsedAt ? formatDate(t.lastUsedAt) : 'никогда';
 
@@ -1238,6 +1274,7 @@ async function loadAgents() {
         </td>
       </tr>`;
     }).join('');
+    lucide.createIcons();
   } catch (e) {
     console.error('Failed to load agents:', e);
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--red)">Ошибка загрузки агентов</td></tr>';
@@ -1246,7 +1283,7 @@ async function loadAgents() {
 
 async function createAgent() {
   const name = document.getElementById('new-agent-name').value.trim();
-  const role = document.getElementById('new-agent-role').value;
+  const role = document.querySelector('#role-select .custom-select-value')?.dataset.role || 'developer';
 
   if (!name) {
     showToast('Введите имя агента', 'error');

@@ -1,11 +1,12 @@
 import crypto from 'node:crypto';
 import type { Pool } from 'pg';
+import type { ProjectRole } from '../memory/types.js';
 import logger from '../logger.js';
 
 export interface AgentInfo {
   id: string;
   agentName: string;
-  role: 'admin' | 'member';
+  role: ProjectRole;
   isActive: boolean;
   createdAt?: string;
   lastUsedAt?: string;
@@ -34,7 +35,7 @@ export class AgentTokenStore {
         this.cache.set(row.token, {
           id: row.id,
           agentName: row.agent_name,
-          role: row.role as 'admin' | 'member',
+          role: row.role as ProjectRole,
           isActive: row.is_active,
         });
       }
@@ -56,7 +57,7 @@ export class AgentTokenStore {
   }
 
   /** Create a new agent token. Returns the raw token (show once) and agent info. */
-  async create(agentName: string, role: string = 'member'): Promise<{ token: string; agent: AgentInfo }> {
+  async create(agentName: string, role: string = 'developer'): Promise<{ token: string; agent: AgentInfo }> {
     const token = 'tm_' + crypto.randomBytes(16).toString('hex');
     const { rows } = await this.pool.query(
       `INSERT INTO agent_tokens (token, agent_name, role) VALUES ($1, $2, $3) RETURNING id, created_at`,
@@ -65,7 +66,7 @@ export class AgentTokenStore {
     const agent: AgentInfo = {
       id: rows[0].id,
       agentName,
-      role: role as 'admin' | 'member',
+      role: role as ProjectRole,
       isActive: true,
       createdAt: rows[0].created_at,
     };
@@ -96,7 +97,7 @@ export class AgentTokenStore {
     this.cache.set(row.token, {
       id,
       agentName: row.agent_name,
-      role: row.role as 'admin' | 'member',
+      role: row.role as ProjectRole,
       isActive: true,
     });
     return true;
