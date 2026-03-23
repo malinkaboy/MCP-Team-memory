@@ -77,7 +77,7 @@ export class PgStorage {
 
     // Set FTS language for EVERY new connection (including those created during migrations)
     this.pool.on('connect', (client: pg.PoolClient) => {
-      client.query(`SET app.fts_language = '${this.ftsLanguage}'`).catch(() => {});
+      client.query('SET app.fts_language = $1', [this.ftsLanguage]).catch(() => {});
     });
 
     // Prevent unhandled error crash when idle clients lose connection

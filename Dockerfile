@@ -12,4 +12,4 @@ ENV MEMORY_PORT=3846
 
 EXPOSE 3846
 
-CMD ["node", "dist/app.js"]
+CMD ["node", "dist/index.js"]
