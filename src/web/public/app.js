@@ -1022,8 +1022,8 @@ function renderEmbeddingPanel(emb) {
     {
       id: 'local',
       label: 'Local ONNX',
-      name: 'all-MiniLM-L6-v2',
-      dims: 384,
+      name: 'nomic-embed-text-v1.5',
+      dims: 768,
       active: emb.provider === 'local',
       warning: emb.provider !== 'local' ? 'Модель не установлена' : null
     },

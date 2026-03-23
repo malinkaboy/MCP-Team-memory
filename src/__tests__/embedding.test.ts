@@ -21,11 +21,11 @@ function createMockPool() {
 
 function createMockEmbeddingProvider(ready = true): EmbeddingProvider {
   return {
-    dimensions: 384,
+    dimensions: 768,
     modelName: 'test-model',
     providerType: 'local',
     isReady: () => ready,
-    embed: vi.fn().mockResolvedValue(new Array(384).fill(0.1)),
+    embed: vi.fn().mockResolvedValue(new Array(768).fill(0.1)),
   };
 }
 
@@ -121,7 +121,7 @@ describe('PgStorage.hybridSearch', () => {
     // trackReads + attachVersions use default mock
     const storage = PgStorage.__createForTest(pool as any);
 
-    const queryEmbedding = new Array(384).fill(0.1);
+    const queryEmbedding = new Array(768).fill(0.1);
     const results = await storage.hybridSearch('default', 'vector test', queryEmbedding, {
       limit: 10,
     });
@@ -341,7 +341,7 @@ describe('MemoryManager embedding integration', () => {
   it('backfillEmbeddings uses embedBatch when available', async () => {
     const batchProvider = {
       ...createMockEmbeddingProvider(true),
-      embedBatch: vi.fn().mockResolvedValue([new Array(384).fill(0.1), new Array(384).fill(0.2)]),
+      embedBatch: vi.fn().mockResolvedValue([new Array(768).fill(0.1), new Array(768).fill(0.2)]),
     };
     await manager.setEmbeddingProvider(batchProvider);
 

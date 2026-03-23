@@ -83,9 +83,9 @@ describe('buildAutoContext', () => {
       .mockResolvedValueOnce([]); // recent
 
     const mockProvider = {
-      embed: vi.fn().mockResolvedValue(new Array(384).fill(0.1)),
+      embed: vi.fn().mockResolvedValue(new Array(768).fill(0.1)),
       isReady: vi.fn().mockReturnValue(true),
-      dimensions: 384,
+      dimensions: 768,
       modelName: 'test-model',
       providerType: 'local' as const,
     };

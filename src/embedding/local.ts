@@ -1,16 +1,16 @@
 import path from 'path';
 import { existsSync, mkdirSync } from 'fs';
-import type { EmbeddingProvider } from './provider.js';
+import type { EmbeddingProvider, EmbedTaskType } from './provider.js';
 import logger from '../logger.js';
 
 /**
- * Local embedding provider using onnxruntime-node with all-MiniLM-L6-v2 model.
- * Model is downloaded on first use to the specified directory.
- * Lazy initialization — if model isn't available, isReady() returns false.
+ * Local embedding provider using onnxruntime-node with nomic-embed-text-v1.5 model.
+ * 768 dimensions, excellent Russian language support, fast on CPU.
+ * Model must be downloaded manually on first use.
  */
 export class LocalEmbeddingProvider implements EmbeddingProvider {
-  readonly dimensions = 384;
-  readonly modelName = 'all-MiniLM-L6-v2';
+  readonly dimensions = 768;
+  readonly modelName = 'nomic-embed-text-v1.5';
   readonly providerType = 'local' as const;
   private session: any = null;
   private tokenizer: any = null;
@@ -32,16 +32,17 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     this.initializing = true;
 
     try {
-      // Ensure model directory exists
       if (!existsSync(this.modelDir)) {
         mkdirSync(this.modelDir, { recursive: true });
       }
 
-      const modelPath = path.join(this.modelDir, 'all-MiniLM-L6-v2');
+      const modelPath = path.join(this.modelDir, 'nomic-embed-text-v1.5');
 
       if (!existsSync(path.join(modelPath, 'onnx', 'model.onnx'))) {
-        logger.info({ modelPath }, 'ONNX model not found. Download it manually or wait for auto-download.');
-        logger.info('Download from: https://huggingface.co/Xenova/all-MiniLM-L6-v2/tree/main/onnx');
+        logger.info({ modelPath }, 'ONNX model not found. Download nomic-embed-text-v1.5:');
+        logger.info('Download from: https://huggingface.co/Xenova/nomic-embed-text-v1.5/tree/main');
+        logger.info('Required files in ' + modelPath + ': tokenizer.json, tokenizer_config.json, special_tokens_map.json');
+        logger.info('Required files in ' + path.join(modelPath, 'onnx/') + ': model.onnx');
         this.initializing = false;
         return;
       }
@@ -56,7 +57,7 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
       this.tokenizer = await AutoTokenizer.from_pretrained(modelPath);
 
       this.ready = true;
-      logger.info('Local embedding provider initialized (all-MiniLM-L6-v2)');
+      logger.info({ model: this.modelName, dimensions: this.dimensions }, 'Local embedding provider initialized');
     } catch (err) {
       logger.warn({ err }, 'Failed to initialize local embedding provider. Vector search disabled.');
       this.ready = false;
@@ -65,15 +66,19 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     }
   }
 
-  async embed(text: string): Promise<number[]> {
+  async embed(text: string, taskType: EmbedTaskType = 'document'): Promise<number[]> {
     if (!this.ready) {
       throw new Error('Embedding provider not initialized');
     }
 
-    const encoded = await this.tokenizer(text, {
+    // nomic-embed-text uses task prefixes for asymmetric retrieval
+    const prefix = taskType === 'query' ? 'search_query: ' : 'search_document: ';
+    const prefixedText = prefix + text;
+
+    const encoded = await this.tokenizer(prefixedText, {
       padding: true,
       truncation: true,
-      max_length: 256,
+      max_length: 512, // safe for most ONNX exports; nomic supports up to 8192 natively
     });
 
     const inputIds = new this.ort.Tensor(
@@ -94,6 +99,7 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     });
 
     // Mean pooling over token embeddings
+    // Note: single-sequence tokenization produces no padding, so seqLen == actual tokens
     const embeddings = output.last_hidden_state || output.token_embeddings;
     const data = Array.from(embeddings.data as Float32Array);
     const seqLen = embeddings.dims[1];
@@ -109,16 +115,16 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
       result[j] /= seqLen;
     }
 
-    // L2 normalize (guard against zero-norm degenerate input)
+    // L2 normalize
     const norm = Math.sqrt(result.reduce((sum, v) => sum + v * v, 0));
     if (norm === 0) return result;
     return result.map(v => v / norm);
   }
 
-  async embedBatch(texts: string[]): Promise<number[][]> {
+  async embedBatch(texts: string[], taskType: EmbedTaskType = 'document'): Promise<number[][]> {
     const results: number[][] = [];
     for (const text of texts) {
-      results.push(await this.embed(text));
+      results.push(await this.embed(text, taskType));
     }
     return results;
   }
