@@ -34,6 +34,7 @@ services:
       MEMORY_DECAY_WEIGHTS: ${MEMORY_DECAY_WEIGHTS:-0.3,0.2,0.3,0.2}
       MEMORY_EMBEDDING_PROVIDER: ${MEMORY_EMBEDDING_PROVIDER:-}
       MEMORY_EMBEDDING_MODEL_DIR: ${MEMORY_EMBEDDING_MODEL_DIR:-data/models}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       PG_CONTAINER: ${COMPOSE_PROJECT_NAME:-team-memory-mcp}-postgres-1
     ports:
       - "3846:3846"

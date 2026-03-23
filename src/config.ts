@@ -17,9 +17,10 @@ export interface AppConfig {
   // FTS config
   ftsLanguage: string;  // PostgreSQL text search config: 'simple', 'russian', 'english', etc.
   // Embedding config
-  embeddingProvider: string | undefined;  // 'local' | 'gemini' | undefined (disabled)
+  embeddingProvider: string | undefined;  // 'local' | 'gemini' | 'ollama' | undefined (disabled)
   embeddingModelDir: string;
   geminiApiKey: string | undefined;
+  ollamaUrl: string;
 }
 
 /** Parse integer with fallback to default on NaN */
@@ -49,5 +50,6 @@ export function loadConfig(): AppConfig {
     embeddingProvider: process.env.MEMORY_EMBEDDING_PROVIDER || undefined,
     embeddingModelDir: process.env.MEMORY_EMBEDDING_MODEL_DIR || 'data/models',
     geminiApiKey: process.env.GEMINI_API_KEY || undefined,
+    ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
   };
 }

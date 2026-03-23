@@ -136,6 +136,14 @@ async function main(): Promise<void> {
       await memoryManager.setEmbeddingProvider(embProvider);
       memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
     }
+  } else if (config.embeddingProvider === 'ollama') {
+    const { OllamaEmbeddingProvider } = await import('./embedding/ollama.js');
+    const embProvider = new OllamaEmbeddingProvider(config.ollamaUrl);
+    await embProvider.initialize();
+    if (embProvider.isReady()) {
+      await memoryManager.setEmbeddingProvider(embProvider);
+      memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
+    }
   } else if (config.embeddingProvider === 'local') {
     const { LocalEmbeddingProvider } = await import('./embedding/local.js');
     const embProvider = new LocalEmbeddingProvider(config.embeddingModelDir);

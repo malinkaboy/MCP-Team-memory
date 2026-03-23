@@ -7,7 +7,7 @@ export type EmbedTaskType = 'document' | 'query';
 
 /**
  * Abstract interface for embedding providers.
- * Implementations: LocalEmbeddingProvider (ONNX), GeminiEmbeddingProvider (API).
+ * Implementations: LocalEmbeddingProvider (ONNX), GeminiEmbeddingProvider (API), OllamaEmbeddingProvider (Ollama API).
  */
 export interface EmbeddingProvider {
   /** Generate embedding vector for the given text */
@@ -32,5 +32,5 @@ export interface EmbeddingProvider {
   readonly modelName: string;
 
   /** Provider type identifier for programmatic use */
-  readonly providerType: 'gemini' | 'local';
+  readonly providerType: 'gemini' | 'local' | 'ollama';
 }
