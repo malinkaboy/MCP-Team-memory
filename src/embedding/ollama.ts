@@ -40,7 +40,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
       const testRes = await fetch(`${this.baseUrl}/api/embed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'nomic-embed-text', input: 'search_query: test' }),
+        body: JSON.stringify({ model: 'nomic-embed-text', truncate: true, input: 'search_query: test' }),
       });
       if (!testRes.ok) throw new Error(`Test embed failed: ${testRes.status}`);
       const testData = await testRes.json() as { embeddings: number[][] };
@@ -62,7 +62,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     const res = await fetch(`${this.baseUrl}/api/embed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'nomic-embed-text', input: prefix + text }),
+      body: JSON.stringify({ model: 'nomic-embed-text', truncate: true, input: prefix + text }),
     });
     if (!res.ok) throw new Error(`Ollama embed error ${res.status}: ${await res.text()}`);
     const data = await res.json() as { embeddings: number[][] };
@@ -76,7 +76,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     const res = await fetch(`${this.baseUrl}/api/embed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'nomic-embed-text', input: texts.map(t => prefix + t) }),
+      body: JSON.stringify({ model: 'nomic-embed-text', truncate: true, input: texts.map(t => prefix + t) }),
     });
     if (!res.ok) throw new Error(`Ollama embed error ${res.status}: ${await res.text()}`);
     const data = await res.json() as { embeddings: number[][] };
