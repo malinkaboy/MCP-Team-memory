@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Team Memory - Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <script src="theme-init.js"></script>
   <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="themes.css?v=1">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <!-- Graph visualization: force-graph (2D canvas, d3-force) -->
   <script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
@@ -157,6 +159,9 @@
           <button class="btn btn-primary" id="btn-add">
             <i data-lucide="plus"></i>
             Добавить
+          </button>
+          <button class="btn btn-icon btn-theme" id="btn-theme" title="Тема">
+            <i data-lucide="palette"></i>
           </button>
         </div>
       </header>
@@ -410,6 +415,25 @@
 
     <!-- Toast Notifications -->
     <div class="toast-container" id="toast-container"></div>
+
+    <!-- Theme Modal -->
+    <div class="modal" id="theme-modal">
+      <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header">
+          <h2>Выбор темы</h2>
+          <button class="modal-close" id="theme-modal-close">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="theme-modal-body" id="theme-list">
+          <!-- Populated by JS -->
+        </div>
+        <div class="theme-modal-footer">
+          <button class="btn btn-secondary" id="theme-cancel">Отмена</button>
+          <button class="btn btn-primary" id="theme-apply">Применить</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="app.js?v=4"></script>
