@@ -78,6 +78,11 @@ export class WebServer {
 
     app.put('/api/projects/:id', async (req: Request, res: Response) => {
       try {
+        // Only master token holder can rename/update projects
+        if ((req as any).agentName) {
+          res.status(403).json({ success: false, error: 'Only administrator can update projects' });
+          return;
+        }
         const { id } = req.params;
         const { name, description, domains } = req.body;
         const project = await this.memoryManager.updateProject(id, { name, description, domains });

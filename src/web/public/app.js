@@ -521,10 +521,11 @@ function initEntryActions() {
   const projectsList = document.getElementById('projects-list');
   if (projectsList) {
     projectsList.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-action="deleteProject"]');
+      const btn = e.target.closest('[data-action]');
       if (!btn) return;
       e.stopPropagation();
-      deleteProject(btn.dataset.id);
+      if (btn.dataset.action === 'deleteProject') deleteProject(btn.dataset.id);
+      if (btn.dataset.action === 'renameProject') renameProject(btn.dataset.id, btn.dataset.name);
     });
   }
 }
@@ -678,6 +679,9 @@ function renderProjectsList() {
       </div>
       <div class="project-item-actions">
         ${p.name !== 'default' && isMasterUser ? `
+          <button class="btn-icon" data-action="renameProject" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" title="Переименовать">
+            <i data-lucide="pencil"></i>
+          </button>
           <button class="btn-icon" data-action="deleteProject" data-id="${escapeHtml(p.id)}" title="Удалить проект">
             <i data-lucide="trash-2"></i>
           </button>
@@ -753,6 +757,31 @@ window.deleteProject = async function(id) {
     console.error(error);
   }
 };
+
+async function renameProject(id, currentName) {
+  const newName = prompt('Новое название проекта:', currentName);
+  if (!newName || newName.trim() === '' || newName.trim() === currentName) return;
+
+  try {
+    const response = await authFetch(`${API_BASE}/projects/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName.trim() }),
+    });
+    const result = await response.json();
+
+    if (result.success) {
+      showToast(`Проект переименован: ${newName.trim()}`, 'success');
+      await loadProjects();
+      renderProjectsList();
+    } else {
+      showToast(result.error || 'Ошибка переименования', 'error');
+    }
+  } catch (error) {
+    showToast('Ошибка сети', 'error');
+    console.error(error);
+  }
+}
 
 // === Load Data ===
 
@@ -862,11 +891,6 @@ async function loadStats() {
 
       // Pinned count from stats (server-side, accurate)
       document.getElementById('count-pinned').textContent = stats.pinnedCount || 0;
-
-      // Embedding stats
-      if (result.embedding) {
-        renderEmbeddingIndicator(result.embedding);
-      }
     }
   } catch (error) {
     console.error('Failed to load stats:', error);
@@ -1141,6 +1165,8 @@ function toggleGraphView(show) {
     domainEl.style.display = 'none';
     graphEl.style.display = 'flex';
     headerRight.style.visibility = 'hidden';
+    const loadMore = document.getElementById('load-more-btn');
+    if (loadMore) loadMore.style.display = 'none';
 
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
     document.getElementById('btn-graph-view').classList.add('active');
@@ -1153,6 +1179,8 @@ function toggleGraphView(show) {
     domainEl.style.display = '';
     graphEl.style.display = 'none';
     headerRight.style.visibility = '';
+    const loadMore = document.getElementById('load-more-btn');
+    if (loadMore) loadMore.style.display = '';
     if (typeof destroyGraph === 'function') destroyGraph();
   }
 }
@@ -1173,116 +1201,6 @@ async function loadGraphEntries() {
     console.error('Failed to load graph entries:', error);
   }
 }
-
-// === Embedding Indicator ===
-
-function renderEmbeddingIndicator(emb) {
-  const dot = document.getElementById('embedding-dot');
-  const countEl = document.getElementById('embedding-count');
-  const indicator = document.getElementById('embedding-indicator');
-  const panel = document.getElementById('embedding-panel');
-
-  if (!emb.provider) {
-    dot.className = 'embedding-dot inactive';
-    countEl.textContent = '—';
-    indicator.title = 'Векторный поиск отключён';
-  } else if (emb.isReady && emb.entriesEmbedded >= emb.entriesTotal) {
-    dot.className = 'embedding-dot active';
-    countEl.textContent = `${emb.entriesEmbedded}/${emb.entriesTotal}`;
-    indicator.title = `${emb.model} · ${emb.dimensions}d · Все записи проиндексированы`;
-  } else if (emb.isReady) {
-    dot.className = 'embedding-dot partial';
-    countEl.textContent = `${emb.entriesEmbedded}/${emb.entriesTotal}`;
-    const pct = emb.entriesTotal > 0 ? Math.round(emb.entriesEmbedded / emb.entriesTotal * 100) : 0;
-    indicator.title = `${emb.model} · ${emb.dimensions}d · ${pct}% проиндексировано`;
-  } else {
-    dot.className = 'embedding-dot inactive';
-    countEl.textContent = '—';
-    indicator.title = 'Модель не инициализирована';
-  }
-
-  // Render models panel
-  renderEmbeddingPanel(emb);
-
-  // Toggle on click
-  indicator.onclick = (e) => {
-    e.stopPropagation();
-    panel.classList.toggle('open');
-  };
-}
-
-function renderEmbeddingPanel(emb) {
-  const modelsEl = document.getElementById('embedding-models');
-  const progressEl = document.getElementById('embedding-progress');
-
-  const models = [
-    {
-      id: 'gemini',
-      label: 'Gemini API',
-      name: 'gemini-embedding-001',
-      dims: 768,
-      active: emb.provider === 'gemini',
-      warning: null
-    },
-    {
-      id: 'local',
-      label: 'Local ONNX',
-      name: 'nomic-embed-text-v1.5',
-      dims: 768,
-      active: emb.provider === 'local',
-      warning: emb.provider !== 'local' ? 'Модель не установлена' : null
-    },
-    {
-      id: 'disabled',
-      label: 'Отключён',
-      name: null,
-      dims: null,
-      active: !emb.provider,
-      warning: null
-    }
-  ];
-
-  modelsEl.innerHTML = models.map(m => `
-    <div class="embedding-model ${m.active ? 'active' : ''}">
-      <div class="embedding-model-radio"></div>
-      <div class="embedding-model-info">
-        <div class="embedding-model-title">
-          ${escapeHtml(m.label)}
-          ${m.dims ? `<span class="embedding-model-dims">${m.dims}d</span>` : ''}
-        </div>
-        ${m.name ? `<div class="embedding-model-name">${escapeHtml(m.name)}</div>` : ''}
-        ${m.warning ? `<div class="embedding-model-warning"><i data-lucide="alert-triangle" style="width:12px;height:12px"></i> ${escapeHtml(m.warning)}</div>` : ''}
-      </div>
-    </div>
-  `).join('');
-
-  // Progress bar
-  const pct = emb.entriesTotal > 0 ? Math.round(emb.entriesEmbedded / emb.entriesTotal * 100) : 0;
-  let fillClass = 'empty';
-  if (pct >= 100) fillClass = 'full';
-  else if (pct > 0) fillClass = 'partial';
-
-  progressEl.innerHTML = `
-    <div class="embedding-progress-label">
-      <span>Проиндексировано</span>
-      <span>${emb.entriesEmbedded}/${emb.entriesTotal} (${pct}%)</span>
-    </div>
-    <div class="embedding-progress-bar">
-      <div class="embedding-progress-fill ${fillClass}" style="width: ${pct}%"></div>
-    </div>
-  `;
-
-  lucide.createIcons();
-}
-
-// Close embedding panel on outside click
-document.addEventListener('click', (e) => {
-  const panel = document.getElementById('embedding-panel');
-  const indicator = document.getElementById('embedding-indicator');
-  if (panel && !panel.contains(e.target) && !indicator.contains(e.target)) {
-    panel.classList.remove('open');
-  }
-});
 
 function showToast(message, type = 'info') {
   const iconMap = {
@@ -1323,6 +1241,8 @@ function toggleAgentsView(show) {
     domainEl.style.display = 'none';
     agentsEl.style.display = '';
     headerRight.style.visibility = 'hidden';
+    const loadMore = document.getElementById('load-more-btn');
+    if (loadMore) loadMore.style.display = 'none';
 
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
     document.getElementById('btn-agents-view').classList.add('active');
@@ -1334,6 +1254,8 @@ function toggleAgentsView(show) {
     entriesEl.style.display = '';
     domainEl.style.display = '';
     headerRight.style.visibility = '';
+    const loadMore = document.getElementById('load-more-btn');
+    if (loadMore) loadMore.style.display = '';
   }
 }
 
