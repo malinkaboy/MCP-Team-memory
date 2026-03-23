@@ -136,11 +136,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         badge.title = `Role: ${authInfo.role}`;
         document.querySelector('.logo').appendChild(badge);
       }
-      // Show Agents tab only for master token holder
+      // Show admin-only UI for master token holder
       if (authInfo.isMaster) {
         isMasterUser = true;
         const agentsBtn = document.getElementById('btn-agents-view');
         if (agentsBtn) agentsBtn.style.display = '';
+        const backupBtn = document.getElementById('btn-backup');
+        if (backupBtn) backupBtn.style.display = '';
       }
     }
   } catch (e) {
@@ -337,6 +339,29 @@ function initNavigation() {
       showToast('Экспорт загружен', 'success');
     } catch (e) {
       showToast('Ошибка экспорта', 'error');
+    }
+  });
+
+  // Backup button (admin only)
+  document.getElementById('btn-backup').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-backup');
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader"></i> Бэкап...';
+    lucide.createIcons();
+    try {
+      const res = await authFetch(`${API_BASE}/backup`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Бэкап создан: ${data.file} (${data.sizeMB} MB)`, 'success');
+      } else {
+        showToast(data.error || 'Ошибка бэкапа', 'error');
+      }
+    } catch (e) {
+      showToast('Ошибка сети', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="database-backup"></i> Бэкап';
+      lucide.createIcons();
     }
   });
 

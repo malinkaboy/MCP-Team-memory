@@ -341,6 +341,59 @@ export class WebServer {
       }
     });
 
+    // === Backup API (admin only) ===
+
+    app.post('/api/backup', async (req: Request, res: Response) => {
+      try {
+        // Only master token holder can create backups
+        if ((req as any).agentName) {
+          res.status(403).json({ success: false, error: 'Only administrator can create backups' });
+          return;
+        }
+
+        const { execSync } = await import('child_process');
+        const fs = await import('fs');
+        const backupDir = path.join(__dirname, '../../data/backups/pg');
+        fs.mkdirSync(backupDir, { recursive: true });
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupFile = path.join(backupDir, `team-memory-${timestamp}.sql`);
+
+        // Try local pg_dump first, fall back to docker exec
+        const dbUrl = process.env.DATABASE_URL || 'postgresql://memory:memory@localhost:5432/team_memory';
+        const container = process.env.PG_CONTAINER || 'team-memory-pg';
+        let cmd: string;
+        try {
+          execSync('pg_dump --version', { stdio: 'pipe' });
+          cmd = `pg_dump "${dbUrl}" > "${backupFile}"`;
+        } catch {
+          // pg_dump not in PATH — use docker exec
+          const url = new URL(dbUrl);
+          cmd = `docker exec ${container} pg_dump -U ${url.username} ${url.pathname.slice(1)} > "${backupFile}"`;
+        }
+        execSync(cmd, { stdio: 'pipe' });
+
+        // Get file size
+        const stats = fs.statSync(backupFile);
+        const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
+
+        // Clean old backups (keep last 30)
+        const files = fs.readdirSync(backupDir)
+          .filter((f: string) => f.startsWith('team-memory-') && f.endsWith('.sql'))
+          .sort()
+          .reverse();
+        for (const f of files.slice(30)) {
+          fs.unlinkSync(path.join(backupDir, f));
+        }
+
+        logger.info({ backupFile, sizeMB }, 'Database backup created');
+        res.json({ success: true, file: path.basename(backupFile), sizeMB, totalBackups: Math.min(files.length, 30) });
+      } catch (error) {
+        logger.error({ err: error }, 'Backup failed');
+        res.status(500).json({ success: false, error: 'Backup failed' });
+      }
+    });
+
     // Auto-recall endpoint (role-aware context)
     app.get('/api/recall', async (req: Request, res: Response) => {
       try {
