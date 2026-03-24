@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { Migrator } from './migrator.js';
 import { DEFAULT_PROJECT_ID } from '../memory/types.js';
-import type { MemoryEntry, Project, ReadParams, ConflictError } from '../memory/types.js';
+import type { MemoryEntry, CompactMemoryEntry, Project, ReadParams, ConflictError } from '../memory/types.js';
 import { buildArchiveByScoreQuery } from '../memory/decay.js';
 import { toISOString } from './utils.js';
 import logger from '../logger.js';
@@ -38,6 +38,25 @@ function rowToEntry(row: Record<string, unknown>): MemoryEntry {
     lastReadAt: row.last_read_at ? toISOString(row.last_read_at) : undefined,
   };
 }
+
+/** Map snake_case DB row → camelCase CompactMemoryEntry (metadata only) */
+function rowToCompactEntry(row: Record<string, unknown>): CompactMemoryEntry {
+  return {
+    id: row.id as string,
+    projectId: row.project_id as string,
+    title: row.title as string,
+    category: row.category as CompactMemoryEntry['category'],
+    domain: (row.domain as string) || null,
+    status: row.status as CompactMemoryEntry['status'],
+    priority: row.priority as CompactMemoryEntry['priority'],
+    tags: (row.tags as string[]) || [],
+    pinned: row.pinned as boolean,
+    updatedAt: toISOString(row.updated_at),
+  };
+}
+
+/** Columns selected in compact mode */
+const COMPACT_COLUMNS = 'id, project_id, title, category, domain, status, priority, tags, pinned, updated_at';
 
 /** Map snake_case DB row → camelCase Project */
 function rowToProject(row: Record<string, unknown>): Project {
@@ -187,6 +206,15 @@ export class PgStorage {
     return rows[0].cnt;
   }
 
+  // Overloads: compact → CompactMemoryEntry[], default → MemoryEntry[]
+  async getAll(projectId: string, filters: {
+    category?: string; domain?: string; status?: string; tags?: string[];
+    limit?: number; offset?: number; compact: true;
+  }): Promise<CompactMemoryEntry[]>;
+  async getAll(projectId: string, filters?: {
+    category?: string; domain?: string; status?: string; tags?: string[];
+    limit?: number; offset?: number; compact?: false;
+  }): Promise<MemoryEntry[]>;
   async getAll(projectId: string, filters?: {
     category?: string;
     domain?: string;
@@ -194,7 +222,8 @@ export class PgStorage {
     tags?: string[];
     limit?: number;
     offset?: number;
-  }): Promise<MemoryEntry[]> {
+    compact?: boolean;
+  }): Promise<MemoryEntry[] | CompactMemoryEntry[]> {
     const conditions: string[] = ['project_id = $1'];
     const values: unknown[] = [projectId];
     let paramIdx = 2;
@@ -221,11 +250,17 @@ export class PgStorage {
     values.push(limit);
     values.push(offset);
 
+    const columns = filters?.compact ? COMPACT_COLUMNS : '*';
     const { rows } = await this.pool.query(
-      `SELECT * FROM entries WHERE ${conditions.join(' AND ')}
+      `SELECT ${columns} FROM entries WHERE ${conditions.join(' AND ')}
        ORDER BY updated_at DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
       values
     );
+
+    if (filters?.compact) {
+      return rows.map(rowToCompactEntry);
+    }
+
     const allEntries = rows.map(rowToEntry);
     this.trackReads(allEntries.map(e => e.id));
     return this.attachVersions(allEntries);
@@ -240,6 +275,26 @@ export class PgStorage {
     return withVersion;
   }
 
+  async getByIds(projectId: string, ids: string[]): Promise<MemoryEntry[]> {
+    if (ids.length === 0) return [];
+    const { rows } = await this.pool.query(
+      'SELECT * FROM entries WHERE project_id = $1 AND id = ANY($2::uuid[])',
+      [projectId, ids]
+    );
+    const entries = rows.map(rowToEntry);
+    this.trackReads(entries.map(e => e.id));
+    return this.attachVersions(entries);
+  }
+
+  // Overloads: compact → CompactMemoryEntry[], default → MemoryEntry[]
+  async search(projectId: string, query: string, filters: {
+    category?: string; domain?: string; status?: string; tags?: string[];
+    limit?: number; offset?: number; compact: true;
+  }): Promise<CompactMemoryEntry[]>;
+  async search(projectId: string, query: string, filters?: {
+    category?: string; domain?: string; status?: string; tags?: string[];
+    limit?: number; offset?: number; compact?: false;
+  }): Promise<MemoryEntry[]>;
   async search(projectId: string, query: string, filters?: {
     category?: string;
     domain?: string;
@@ -247,12 +302,13 @@ export class PgStorage {
     tags?: string[];
     limit?: number;
     offset?: number;
-  }): Promise<MemoryEntry[]> {
+    compact?: boolean;
+  }): Promise<MemoryEntry[] | CompactMemoryEntry[]> {
     const conditions: string[] = ['project_id = $1'];
     const values: unknown[] = [projectId];
     let paramIdx = 2;
 
-    // Full-text search + ILIKE fallback
+    // Full-text search + ILIKE fallback (WHERE can reference content even when SELECT omits it)
     conditions.push(`(search_vector @@ plainto_tsquery(current_setting('app.fts_language')::regconfig, $${paramIdx}) OR title ILIKE $${paramIdx + 1} OR content ILIKE $${paramIdx + 1})`);
     values.push(query, `%${escapeIlike(query)}%`);
     paramIdx += 2;
@@ -279,11 +335,17 @@ export class PgStorage {
     values.push(limit);
     values.push(offset);
 
+    const columns = filters?.compact ? COMPACT_COLUMNS : '*';
     const { rows } = await this.pool.query(
-      `SELECT * FROM entries WHERE ${conditions.join(' AND ')}
+      `SELECT ${columns} FROM entries WHERE ${conditions.join(' AND ')}
        ORDER BY updated_at DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
       values
     );
+
+    if (filters?.compact) {
+      return rows.map(rowToCompactEntry);
+    }
+
     const entries = rows.map(rowToEntry);
     this.trackReads(entries.map(e => e.id));
     return this.attachVersions(entries);
@@ -528,6 +590,14 @@ export class PgStorage {
 
   /** Hybrid search: combines full-text search with vector similarity */
   async hybridSearch(
+    projectId: string, query: string, queryEmbedding: number[] | undefined,
+    filters: { category?: string; domain?: string; status?: string; tags?: string[]; limit?: number; offset?: number; compact: true; }
+  ): Promise<CompactMemoryEntry[]>;
+  async hybridSearch(
+    projectId: string, query: string, queryEmbedding: number[] | undefined,
+    filters?: { category?: string; domain?: string; status?: string; tags?: string[]; limit?: number; offset?: number; compact?: false; }
+  ): Promise<MemoryEntry[]>;
+  async hybridSearch(
     projectId: string,
     query: string,
     queryEmbedding?: number[],
@@ -538,11 +608,12 @@ export class PgStorage {
       tags?: string[];
       limit?: number;
       offset?: number;
+      compact?: boolean;
     }
-  ): Promise<MemoryEntry[]> {
+  ): Promise<MemoryEntry[] | CompactMemoryEntry[]> {
     // Fall back to regular search when no embedding available
     if (!queryEmbedding) {
-      return this.search(projectId, query, filters);
+      return this.search(projectId, query, filters as any);
     }
 
     const conditions: string[] = ['project_id = $1'];
@@ -580,8 +651,9 @@ export class PgStorage {
     values.push(limit);
     values.push(offset);
 
+    const columns = filters?.compact ? COMPACT_COLUMNS : '*';
     const sql = `
-      SELECT *,
+      SELECT ${columns},
         ts_rank(search_vector, plainto_tsquery(current_setting('app.fts_language')::regconfig, $${textParamIdx})) AS text_score,
         1 - (embedding <=> $${vectorParamIdx}::vector) AS vector_score
       FROM entries
@@ -594,6 +666,11 @@ export class PgStorage {
     `;
 
     const { rows } = await this.pool.query(sql, values);
+
+    if (filters?.compact) {
+      return rows.map(rowToCompactEntry);
+    }
+
     const entries = rows.map(rowToEntry);
     this.trackReads(entries.map(e => e.id));
     return this.attachVersions(entries);
