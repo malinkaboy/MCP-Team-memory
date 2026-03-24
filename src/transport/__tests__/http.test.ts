@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { isInitializeRequest } from '../http.js';
+import {
+  isInitializeRequest,
+  REINIT_WINDOW_MS,
+  getRecentlyExpiredForTest,
+  cleanupExpiredEntries,
+} from '../http.js';
 
 describe('isInitializeRequest', () => {
   it('returns true for initialize JSON-RPC request', () => {
@@ -28,5 +33,22 @@ describe('isInitializeRequest', () => {
   it('returns false for null/undefined', () => {
     expect(isInitializeRequest(null)).toBe(false);
     expect(isInitializeRequest(undefined)).toBe(false);
+  });
+});
+
+describe('recentlyExpired cleanup', () => {
+  beforeEach(() => {
+    getRecentlyExpiredForTest().clear();
+  });
+
+  it('entries older than REINIT_WINDOW_MS are removed during cleanup', () => {
+    const map = getRecentlyExpiredForTest();
+    map.set('old-session', Date.now() - REINIT_WINDOW_MS - 1000);
+    map.set('fresh-session', Date.now());
+
+    cleanupExpiredEntries();
+
+    expect(map.has('old-session')).toBe(false);
+    expect(map.has('fresh-session')).toBe(true);
   });
 });

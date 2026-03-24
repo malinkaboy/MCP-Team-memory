@@ -16,6 +16,30 @@ const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // check every 5 minutes
 const transports = new Map<string, SessionEntry>();
 
+export const REINIT_WINDOW_MS = 30_000; // 30 seconds to retry before transparent re-init
+const recentlyExpired = new Map<string, number>(); // sessionId → timestamp of 404
+const reinitInProgress = new Set<string>();
+
+/** Exported for testing only */
+export function getRecentlyExpiredForTest(): Map<string, number> {
+  return recentlyExpired;
+}
+
+/** Exported for testing only */
+export function getReinitInProgressForTest(): Set<string> {
+  return reinitInProgress;
+}
+
+/** Remove stale entries from recentlyExpired map. Uses REINIT_WINDOW_MS, not SESSION_TTL_MS. */
+export function cleanupExpiredEntries(): void {
+  const now = Date.now();
+  for (const [id, timestamp] of recentlyExpired) {
+    if (now - timestamp > REINIT_WINDOW_MS) {
+      recentlyExpired.delete(id);
+    }
+  }
+}
+
 // Periodic cleanup of abandoned sessions
 setInterval(() => {
   const now = Date.now();
@@ -26,6 +50,7 @@ setInterval(() => {
       logger.info({ sessionId: id }, 'MCP session expired (TTL)');
     }
   }
+  cleanupExpiredEntries();
 }, CLEANUP_INTERVAL_MS).unref();
 
 /** Check if a JSON-RPC body contains an initialize request */
