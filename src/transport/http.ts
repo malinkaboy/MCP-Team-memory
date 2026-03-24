@@ -67,6 +67,7 @@ export function mountMcpTransport(app: Express, createMcpServer: () => Server): 
   app.post('/mcp', async (req: Request, res: Response) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
+    // 1. Existing session — reuse
     if (sessionId && transports.has(sessionId)) {
       const session = transports.get(sessionId)!;
       session.lastActivity = Date.now();
@@ -74,7 +75,37 @@ export function mountMcpTransport(app: Express, createMcpServer: () => Server): 
       return;
     }
 
-    // New session
+    // 2. Unknown/expired session with non-initialize request
+    if (sessionId && !transports.has(sessionId) && !isInitializeRequest(req.body)) {
+      // Layer B check: if this session was recently 404'd, do transparent re-init
+      if (recentlyExpired.has(sessionId) && Date.now() - recentlyExpired.get(sessionId)! < REINIT_WINDOW_MS) {
+        // Layer B: transparent re-init — placeholder, returns 404 for now
+        // Do NOT update recentlyExpired timestamp — preserve original 404 time
+        logger.info({ sessionId }, 'MCP session expired (retry within window), returning 404 (Layer B not yet wired)');
+        res.status(404)
+          .set('X-MCP-Session-Expired', 'true')
+          .json({
+            jsonrpc: '2.0',
+            error: { code: -32000, message: 'Session expired or not found. Please re-initialize.' },
+            id: null,
+          });
+        return;
+      }
+
+      // Layer A: first time seeing this expired session — return 404 and record
+      recentlyExpired.set(sessionId, Date.now());
+      logger.info({ sessionId }, 'MCP session expired, returning 404');
+      res.status(404)
+        .set('X-MCP-Session-Expired', 'true')
+        .json({
+          jsonrpc: '2.0',
+          error: { code: -32000, message: 'Session expired or not found. Please re-initialize.' },
+          id: null,
+        });
+      return;
+    }
+
+    // 3. New session (no session ID, or initialize request)
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => crypto.randomUUID(),
       onsessioninitialized: (id: string) => {
