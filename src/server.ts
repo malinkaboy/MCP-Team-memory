@@ -58,7 +58,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
     const tools: Tool[] = [
       {
         name: 'memory_read',
-        description: 'Читает командную память. Используйте для получения информации о текущем состоянии проекта, архитектурных решениях, задачах и проблемах. По умолчанию возвращает компактный список (без content). Для получения полного содержимого используйте ids или mode="full".',
+        description: 'Читает командную память. По умолчанию возвращает компактный список (без content). Два сценария получения полного содержимого:\n1. Обзор → детали: memory_read() → получить ID → memory_read(ids=[...])\n2. Поиск: memory_read(search="ключевые слова") → memory_read(ids=[...])\nДля малых выборок: memory_read(search="...", mode="full", limit=5)',
         inputSchema: {
           type: 'object',
           properties: {
@@ -97,7 +97,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_write',
-        description: 'Добавляет новую запись в командную память. Используйте для документирования решений, задач, проблем и прогресса.',
+        description: 'Добавляет новую запись в командную память. Обязательные поля: category, title, content. Пример: memory_write(category="decisions", title="Выбран Zustand", content="Причины: ...", tags=["state"], priority="high")',
         inputSchema: {
           type: 'object',
           properties: {
@@ -125,7 +125,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_update',
-        description: 'Обновляет существующую запись в памяти.',
+        description: 'Обновляет существующую запись в памяти. Обязательное поле: id. Остальные поля — только те, которые нужно изменить. Пример: memory_update(id="...", status="completed", content="Новый текст")',
         inputSchema: {
           type: 'object',
           properties: {
@@ -145,7 +145,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_delete',
-        description: 'Удаляет или архивирует запись из памяти.',
+        description: 'Удаляет или архивирует запись из памяти. По умолчанию архивирует (archive=true). Для полного удаления: memory_delete(id="...", archive=false)',
         inputSchema: {
           type: 'object',
           properties: {
@@ -157,7 +157,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_sync',
-        description: 'Получает последние изменения в памяти.',
+        description: 'Получает последние изменения в памяти. Без параметров — изменения за 24 часа. Пример: memory_sync(since="2026-03-24T00:00:00Z")',
         inputSchema: {
           type: 'object',
           properties: {
@@ -189,15 +189,15 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_projects',
-        description: 'Управление проектами: список, создание, обновление, удаление.',
+        description: 'Управление проектами. ОБЯЗАТЕЛЬНЫЙ параметр: action.\n- action="list" — список всех проектов (без доп. параметров)\n- action="create" — создать проект (name обязателен, description и domains опционально)\n- action="update" — обновить проект (id обязателен, name/description/domains опционально)\n- action="delete" — удалить проект (id обязателен)',
         inputSchema: {
           type: 'object',
           properties: {
-            action: { type: 'string', enum: ['list', 'create', 'update', 'delete'], description: 'Действие' },
-            id: { type: 'string', description: 'ID проекта (для update/delete)' },
-            name: { type: 'string', description: 'Название проекта' },
+            action: { type: 'string', enum: ['list', 'create', 'update', 'delete'], description: 'Действие (ОБЯЗАТЕЛЬНО)' },
+            id: { type: 'string', description: 'ID проекта (обязателен для update и delete)' },
+            name: { type: 'string', description: 'Название проекта (обязательно для create)' },
             description: { type: 'string', description: 'Описание проекта' },
-            domains: { type: 'array', items: { type: 'string' }, description: 'Домены проекта' }
+            domains: { type: 'array', items: { type: 'string' }, description: 'Домены проекта (backend, frontend, и т.д.)' }
           },
           required: ['action']
         }
@@ -240,28 +240,28 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_conventions',
-        description: 'Управление конвенциями проекта (стиль кода, паттерны, правила). Используйте для хранения .editorconfig-подобных правил для AI-агентов.',
+        description: 'Управление конвенциями проекта (стиль кода, паттерны, правила). ОБЯЗАТЕЛЬНЫЙ параметр: action.\n- action="list" — показать все конвенции\n- action="add" — добавить (title и content обязательны)\n- action="remove" — удалить (id обязателен)',
         inputSchema: {
           type: 'object',
           properties: {
             action: {
               type: 'string',
               enum: ['list', 'add', 'remove'],
-              description: 'Действие: list — показать конвенции, add — добавить, remove — удалить'
+              description: 'Действие (ОБЯЗАТЕЛЬНО): list, add или remove'
             },
             project_id: { type: 'string', description: 'ID проекта' },
-            title: { type: 'string', description: 'Название конвенции (для add)' },
-            content: { type: 'string', description: 'Описание конвенции (для add)' },
+            title: { type: 'string', description: 'Название конвенции (обязательно для add)' },
+            content: { type: 'string', description: 'Описание конвенции (обязательно для add)' },
             domain: { type: 'string', description: 'Домен конвенции (для add)' },
             tags: { type: 'array', items: { type: 'string' }, description: 'Теги (для add)' },
-            id: { type: 'string', description: 'ID конвенции (для remove)' },
+            id: { type: 'string', description: 'ID конвенции (обязателен для remove)' },
           },
           required: ['action']
         }
       },
       {
         name: 'memory_cross_search',
-        description: 'Поиск паттернов и решений МЕЖДУ проектами. Находит релевантные записи из всех проектов.',
+        description: 'Поиск паттернов и решений МЕЖДУ проектами. ОБЯЗАТЕЛЬНЫЙ параметр: query. Пример: memory_cross_search(query="аутентификация JWT", category="decisions")',
         inputSchema: {
           type: 'object',
           properties: {
