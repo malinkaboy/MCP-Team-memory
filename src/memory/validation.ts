@@ -20,6 +20,7 @@ export const ReadParamsSchema = z.object({
   limit: z.number().int().min(1).default(50).transform(v => Math.min(v, 500)),
   offset: z.number().int().min(0).default(0).transform(v => Math.min(v, 10000)),
   status: StatusEnum.optional(),
+  tags: z.array(z.string().max(50)).max(20).optional(),
   ids: z.array(UuidSchema).max(100).optional(),
   mode: z.enum(['compact', 'full']).default('compact'),
 });

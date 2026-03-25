@@ -86,6 +86,11 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
               type: 'string',
               enum: ['compact', 'full'],
               description: 'Режим вывода: compact (по умолчанию) — только метаданные без content; full — полные записи с content'
+            },
+            tags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Фильтр по тегам (пересечение — запись должна содержать хотя бы один из указанных тегов)'
             }
           }
         }
@@ -325,6 +330,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
             status: parsed.data.status,
             ids: parsed.data.ids,
             mode: parsed.data.mode,
+            tags: parsed.data.tags,
           };
           const entries = await memoryManager.read(params);
           if (entries.length === 0) {
