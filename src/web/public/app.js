@@ -132,7 +132,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const badge = document.createElement('span');
         badge.className = 'agent-badge';
         badge.textContent = authInfo.agentName;
-        badge.title = `Role: ${authInfo.role}`;
+        badge.setAttribute('data-tooltip', `${authInfo.agentName} · ${authInfo.role || 'agent'}`);
+        badge.setAttribute('data-tooltip-pos', 'bottom');
         const footer = document.querySelector('.sidebar-footer');
         footer.insertBefore(badge, footer.firstChild);
       }
@@ -150,6 +151,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   lucide.createIcons();
+  initTooltips();
   initSidebarToggle();
   initNavigation();
   initSearch();
@@ -164,6 +166,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadEntries();
   loadStats();
 });
+
+// === Tooltips ===
+
+function convertTitlesToTooltips(root = document) {
+  root.querySelectorAll('[title]').forEach(el => {
+    const text = el.getAttribute('title');
+    if (text) {
+      el.setAttribute('data-tooltip', text);
+      el.removeAttribute('title');
+    }
+  });
+}
+
+function initTooltips() {
+  convertTitlesToTooltips();
+  // Watch for dynamically added elements with title attributes
+  new MutationObserver(mutations => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType === 1) convertTitlesToTooltips(node);
+      }
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+}
 
 // === Projects ===
 
@@ -1364,20 +1390,20 @@ function renderEmbeddingIndicator(emb) {
   if (!emb.provider) {
     dot.className = 'embedding-dot inactive';
     countEl.textContent = '—';
-    indicator.title = 'Векторный поиск отключён';
+    indicator.setAttribute('data-tooltip', 'Векторный поиск отключён');
   } else if (emb.isReady && emb.entriesEmbedded >= emb.entriesTotal) {
     dot.className = 'embedding-dot active';
     countEl.textContent = `${emb.entriesEmbedded}/${emb.entriesTotal}`;
-    indicator.title = `${emb.model} · ${emb.dimensions}d · Все записи проиндексированы`;
+    indicator.setAttribute('data-tooltip', `${emb.model} · ${emb.dimensions}d · Все записи проиндексированы`);
   } else if (emb.isReady) {
     dot.className = 'embedding-dot partial';
     countEl.textContent = `${emb.entriesEmbedded}/${emb.entriesTotal}`;
     const pct = emb.entriesTotal > 0 ? Math.round(emb.entriesEmbedded / emb.entriesTotal * 100) : 0;
-    indicator.title = `${emb.model} · ${emb.dimensions}d · ${pct}% проиндексировано`;
+    indicator.setAttribute('data-tooltip', `${emb.model} · ${emb.dimensions}d · ${pct}% проиндексировано`);
   } else {
     dot.className = 'embedding-dot inactive';
     countEl.textContent = '—';
-    indicator.title = 'Модель не инициализирована';
+    indicator.setAttribute('data-tooltip', 'Модель не инициализирована');
   }
 }
 
