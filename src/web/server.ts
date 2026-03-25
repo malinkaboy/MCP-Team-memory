@@ -146,6 +146,7 @@ export class WebServer {
           status,
           limit,
           offset,
+          mode: 'full',
         });
 
         res.json({ success: true, entries, offset, limit, hasMore: entries.length === limit });
