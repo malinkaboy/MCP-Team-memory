@@ -129,12 +129,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const verifyRes = await authFetch('/api/auth/verify');
       const authInfo = await verifyRes.json();
       if (authInfo.agentName) {
-        document.querySelector('.logo-text').textContent = `Team Memory`;
         const badge = document.createElement('span');
         badge.className = 'agent-badge';
         badge.textContent = authInfo.agentName;
-        badge.title = `Role: ${authInfo.role}`;
-        document.querySelector('.logo').appendChild(badge);
+        badge.setAttribute('data-tooltip', `${authInfo.agentName} · ${authInfo.role || 'agent'}`);
+        badge.setAttribute('data-tooltip-pos', 'bottom');
+        const footer = document.querySelector('.sidebar-footer');
+        footer.insertBefore(badge, footer.firstChild);
       }
       // Show admin-only UI for master token holder
       if (authInfo.isMaster) {
@@ -150,6 +151,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   lucide.createIcons();
+  initTooltips();
   initSidebarToggle();
   initNavigation();
   initSearch();
@@ -158,11 +160,36 @@ document.addEventListener('DOMContentLoaded', async () => {
   initThemeSwitcher();
   initProjectsModal();
   initEntryActions();
+  initAgentsPopup();
   initWebSocket();
   await loadProjects();
   loadEntries();
   loadStats();
 });
+
+// === Tooltips ===
+
+function convertTitlesToTooltips(root = document) {
+  root.querySelectorAll('[title]').forEach(el => {
+    const text = el.getAttribute('title');
+    if (text) {
+      el.setAttribute('data-tooltip', text);
+      el.removeAttribute('title');
+    }
+  });
+}
+
+function initTooltips() {
+  convertTitlesToTooltips();
+  // Watch for dynamically added elements with title attributes
+  new MutationObserver(mutations => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType === 1) convertTitlesToTooltips(node);
+      }
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+}
 
 // === Projects ===
 
@@ -506,15 +533,19 @@ function initEntryActions() {
   // Entry card actions (delegated on entries container)
   entriesContainer.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action]');
-    if (!btn) return;
-    e.stopPropagation();
-    const action = btn.dataset.action;
-    const id = btn.dataset.id;
-    if (action === 'togglePin') togglePin(id);
-    else if (action === 'editEntry') editEntry(id);
-    else if (action === 'showHistory') showHistory(id);
-    else if (action === 'archiveEntry') archiveEntry(id);
-    else if (action === 'deleteEntry') deleteEntry(id);
+    if (btn) {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      if (action === 'togglePin') togglePin(id);
+      else if (action === 'editEntry') editEntry(id);
+      else if (action === 'showHistory') showHistory(id);
+      else if (action === 'archiveEntry') archiveEntry(id);
+      else if (action === 'deleteEntry') deleteEntry(id);
+      return;
+    }
+    const card = e.target.closest('.entry-card');
+    if (card) openReadModal(card.dataset.id);
   });
 
   // Project delete action (delegated on projects modal)
@@ -528,6 +559,64 @@ function initEntryActions() {
       if (btn.dataset.action === 'renameProject') renameProject(btn.dataset.id, btn.dataset.name);
     });
   }
+}
+
+// === Read Modal ===
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  let html = escapeHtml(text);
+  // headings: ### > ## > #
+  html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+  // bold **text** and __text__
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+  // italic *text* and _text_
+  html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+  // inline code `text`
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // unordered lists
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // line breaks
+  html = html.replace(/\n/g, '<br>');
+  // clean up <br> after block elements
+  html = html.replace(/(<\/h[234]>)<br>/g, '$1');
+  html = html.replace(/(<\/ul>)<br>/g, '$1');
+  html = html.replace(/(<\/li>)<br>/g, '$1');
+  return html;
+}
+
+function openReadModal(id) {
+  const entry = entries.find(e => e.id === id);
+  if (!entry) return;
+
+  document.getElementById('read-modal-title').textContent = entry.title;
+
+  const catInfo = categoryConfig[entry.category];
+  const domainStr = entry.domain ? ` · ${entry.domain}` : '';
+  document.getElementById('read-modal-meta').innerHTML =
+    `<span class="read-meta-cat">${catInfo?.label || entry.category}${domainStr}</span>
+     <span class="read-meta-info">${escapeHtml(entry.author)} · ${formatDate(entry.updatedAt)}</span>`;
+
+  document.getElementById('read-modal-body').innerHTML = renderMarkdown(entry.content);
+
+  const tagsEl = document.getElementById('read-modal-tags');
+  tagsEl.innerHTML = entry.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('');
+
+  const readModal = document.getElementById('read-modal');
+  readModal.classList.add('active');
+  readModal.dataset.entryId = id;
+
+  document.getElementById('read-modal-close').onclick = () => readModal.classList.remove('active');
+  document.getElementById('read-modal-edit').onclick = () => {
+    readModal.classList.remove('active');
+    editEntry(id);
+  };
+  readModal.onclick = (e) => { if (e.target === readModal) readModal.classList.remove('active'); };
+  lucide.createIcons();
 }
 
 // === Entry Modal ===
@@ -886,11 +975,16 @@ async function loadStats() {
       document.getElementById('stat-total').textContent = stats.totalEntries;
       document.getElementById('stat-24h').textContent = stats.recentActivity?.last24h || 0;
 
-      document.getElementById('agents-count').textContent =
-        `${stats.connectedAgents || 0} агентов онлайн`;
+      // Update agent/UI counters from agents API
+      updateAgentCounters();
 
       // Pinned count from stats (server-side, accurate)
       document.getElementById('count-pinned').textContent = stats.pinnedCount || 0;
+
+      // Embedding stats
+      if (result.embedding) {
+        renderEmbeddingIndicator(result.embedding);
+      }
     }
   } catch (error) {
     console.error('Failed to load stats:', error);
@@ -919,30 +1013,26 @@ function renderEntries() {
 
     return `
     <div class="entry-card ${escapeHtml(entry.status)}${entry.pinned ? ' pinned' : ''}" data-id="${escapeHtml(entry.id)}">
-      <div class="entry-header">
-        <div class="entry-title">
-          ${entry.pinned ? '<i data-lucide="pin" class="pin-indicator"></i>' : ''}
-          <span class="priority-dot priority-${escapeHtml(entry.priority)}"></span>
-          ${escapeHtml(entry.title)}
-        </div>
-        <div class="entry-badges">
-          ${domainBadge}
-          <span class="entry-category">
-            <i data-lucide="${categoryConfig[entry.category]?.icon || 'file'}"></i>
-            ${escapeHtml(entry.category)}
-          </span>
-        </div>
+      <div class="entry-badges">
+        ${domainBadge}
+        <span class="entry-category">
+          <i data-lucide="${categoryConfig[entry.category]?.icon || 'file'}"></i>
+          ${escapeHtml(entry.category)}
+        </span>
+      </div>
+      <div class="entry-title">
+        ${entry.pinned ? '<i data-lucide="pin" class="pin-indicator"></i>' : ''}
+        <span class="priority-dot priority-${escapeHtml(entry.priority)}"></span>
+        <span class="entry-title-text">${escapeHtml(entry.title)}</span>
       </div>
       <div class="entry-content">${escapeHtml(entry.content)}</div>
-      ${entry.tags.length > 0 ? `
-        <div class="entry-tags">
-          ${entry.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}
-        </div>
-      ` : ''}
+      <div class="entry-tags-row">
+        ${entry.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}
+      </div>
       <div class="entry-footer">
         <div class="entry-meta">
-          <span><i data-lucide="user"></i> ${escapeHtml(entry.author)}</span>
-          <span><i data-lucide="calendar"></i> ${formatDate(entry.updatedAt)}</span>
+          <span class="entry-meta-time"><i data-lucide="calendar"></i> ${formatDate(entry.updatedAt)}</span>
+          <span class="entry-meta-author"><i data-lucide="user"></i> ${escapeHtml(entry.author)}</span>
         </div>
         <div class="entry-actions">
           <button data-action="togglePin" data-id="${entry.id}" title="${entry.pinned ? 'Открепить' : 'Закрепить'}" class="${entry.pinned ? 'active' : ''}">
@@ -954,9 +1044,9 @@ function renderEntries() {
           <button data-action="showHistory" data-id="${entry.id}" title="История">
             <i data-lucide="history"></i>
           </button>
-          <button data-action="archiveEntry" data-id="${entry.id}" title="Архивировать">
+          ${entry.status !== 'archived' ? `<button data-action="archiveEntry" data-id="${entry.id}" title="Архивировать">
             <i data-lucide="archive"></i>
-          </button>
+          </button>` : ''}
           <button data-action="deleteEntry" data-id="${entry.id}" title="Удалить">
             <i data-lucide="trash-2"></i>
           </button>
@@ -1073,12 +1163,92 @@ window.showHistory = async function(id) {
   }
 };
 
+// === Agents Popup ===
+
+function initAgentsPopup() {
+  const btn = document.getElementById('agents-status-btn');
+  const popup = document.getElementById('agents-popup');
+  if (!btn || !popup) return;
+
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const isOpen = popup.style.display !== 'none';
+    if (isOpen) {
+      popup.style.display = 'none';
+      return;
+    }
+    await loadAgentsPopup();
+    popup.style.display = '';
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!popup.contains(e.target) && !btn.contains(e.target)) {
+      popup.style.display = 'none';
+    }
+  });
+}
+
+async function loadAgentsPopup() {
+  const agentsList = document.getElementById('agents-popup-agents');
+  const uiList = document.getElementById('agents-popup-ui');
+  if (!agentsList || !uiList) return;
+
+  try {
+    const response = await authFetch(`${API_BASE}/agents`);
+    const result = await response.json();
+    const all = result.success ? (result.agents || []) : [];
+
+    const agents = all.filter(a => a.clientType === 'agent');
+    const uiClients = all.filter(a => a.clientType === 'ui');
+
+    agentsList.innerHTML = agents.length
+      ? agents.map(a => renderAgentItem(a, 'agents-popup-dot')).join('')
+      : '<div class="agents-popup-empty">Нет агентов</div>';
+
+    uiList.innerHTML = uiClients.length
+      ? uiClients.map(a => renderAgentItem(a, 'agents-popup-dot agents-popup-dot--ui')).join('')
+      : '<div class="agents-popup-empty">Нет UI-клиентов</div>';
+
+    // Update counters
+    document.getElementById('agents-count-agents').textContent = `Агенты: ${agents.length}`;
+    document.getElementById('agents-count-ui').textContent = `UI: ${uiClients.length}`;
+  } catch (err) {
+    agentsList.innerHTML = '<div class="agents-popup-empty">Ошибка загрузки</div>';
+    uiList.innerHTML = '';
+  }
+}
+
+async function updateAgentCounters() {
+  try {
+    const response = await authFetch(`${API_BASE}/agents`);
+    const result = await response.json();
+    const all = result.success ? (result.agents || []) : [];
+    const agents = all.filter(a => a.clientType === 'agent');
+    const uiClients = all.filter(a => a.clientType === 'ui');
+    document.getElementById('agents-count-agents').textContent = `Агенты: ${agents.length}`;
+    document.getElementById('agents-count-ui').textContent = `UI: ${uiClients.length}`;
+  } catch (e) { /* ignore */ }
+}
+
+function renderAgentItem(agent, dotClass) {
+  return `
+    <div class="agents-popup-item">
+      <span class="${dotClass}"></span>
+      <div class="agents-popup-info">
+        <div class="agents-popup-name">${escapeHtml(agent.name || 'Unknown')}</div>
+        <div class="agents-popup-time">подключён ${formatDate(agent.connectedAt)}</div>
+      </div>
+    </div>`;
+}
+
 // === WebSocket ===
 
 function initWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const tokenParam = AUTH_TOKEN ? `?token=${encodeURIComponent(AUTH_TOKEN)}` : '';
-  const wsUrl = `${protocol}//${window.location.host}/ws${tokenParam}`;
+  const params = new URLSearchParams();
+  if (AUTH_TOKEN) params.set('token', AUTH_TOKEN);
+  params.set('client_type', 'ui');
+  const wsUrl = `${protocol}//${window.location.host}/ws?${params.toString()}`;
 
   try {
     ws = new WebSocket(wsUrl);
@@ -1126,10 +1296,16 @@ function handleWSMessage(data) {
       if (!data.payload.renamed) {
         loadStats();
       }
+      if (document.getElementById('agents-popup')?.style.display !== 'none') {
+        loadAgentsPopup();
+      }
       break;
 
     case 'agent:disconnected':
       loadStats();
+      if (document.getElementById('agents-popup')?.style.display !== 'none') {
+        loadAgentsPopup();
+      }
       break;
   }
 }
@@ -1140,13 +1316,14 @@ function formatDate(dateString) {
   const date = new Date(dateString);
   const now = new Date();
   const diff = now - date;
+  const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
   if (diff < 60000) return 'только что';
   if (diff < 3600000) return `${Math.floor(diff / 60000)} мин назад`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)} ч назад`;
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)} дн назад`;
+  if (diff < 86400000) return `сегодня, ${time}`;
+  if (diff < 172800000) return `вчера, ${time}`;
 
-  return date.toLocaleDateString('ru-RU');
+  return `${date.toLocaleDateString('ru-RU')}, ${time}`;
 }
 
 // === Graph View Toggle ===
@@ -1199,6 +1376,34 @@ async function loadGraphEntries() {
     }
   } catch (error) {
     console.error('Failed to load graph entries:', error);
+  }
+}
+
+// === Embedding Indicator ===
+
+function renderEmbeddingIndicator(emb) {
+  const dot = document.getElementById('embedding-dot');
+  const countEl = document.getElementById('embedding-count');
+  const indicator = document.getElementById('embedding-indicator');
+  if (!dot || !countEl || !indicator) return;
+
+  if (!emb.provider) {
+    dot.className = 'embedding-dot inactive';
+    countEl.textContent = '—';
+    indicator.setAttribute('data-tooltip', 'Векторный поиск отключён');
+  } else if (emb.isReady && emb.entriesEmbedded >= emb.entriesTotal) {
+    dot.className = 'embedding-dot active';
+    countEl.textContent = `${emb.entriesEmbedded}/${emb.entriesTotal}`;
+    indicator.setAttribute('data-tooltip', `${emb.model} · ${emb.dimensions}d · Все записи проиндексированы`);
+  } else if (emb.isReady) {
+    dot.className = 'embedding-dot partial';
+    countEl.textContent = `${emb.entriesEmbedded}/${emb.entriesTotal}`;
+    const pct = emb.entriesTotal > 0 ? Math.round(emb.entriesEmbedded / emb.entriesTotal * 100) : 0;
+    indicator.setAttribute('data-tooltip', `${emb.model} · ${emb.dimensions}d · ${pct}% проиндексировано`);
+  } else {
+    dot.className = 'embedding-dot inactive';
+    countEl.textContent = '—';
+    indicator.setAttribute('data-tooltip', 'Модель не инициализирована');
   }
 }
 
@@ -1538,7 +1743,10 @@ function openThemeModal() {
   let selectedId = null;
   list.querySelectorAll('.theme-row').forEach(row => {
     row.addEventListener('click', () => {
-      list.querySelectorAll('.theme-row').forEach(r => r.classList.remove('selected'));
+      list.querySelectorAll('.theme-row').forEach(r => {
+        r.classList.remove('selected');
+        r.classList.remove('active');
+      });
       row.classList.add('selected');
       selectedId = row.dataset.themeId;
     });

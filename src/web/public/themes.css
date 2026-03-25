@@ -290,6 +290,19 @@
   color: #0A0A0A;
 }
 
+[data-theme="sport"] .custom-select-options {
+  color: var(--text-primary);
+}
+
+[data-theme="sport"] .custom-select-option {
+  color: var(--text-primary);
+}
+
+[data-theme="sport"] select option {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
 [data-theme="sport"] .entry-badge {
   border: none;
   border-radius: 3px;
@@ -303,8 +316,13 @@
   -webkit-text-fill-color: var(--accent-primary);
 }
 
+[data-theme="sport"] .toast {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
 [data-theme="sport"] .toast.success {
-  color: #0A0A0A;
+  color: var(--text-primary);
 }
 
 [data-theme="sport"] .theme-row.active {
