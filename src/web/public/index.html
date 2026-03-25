@@ -16,7 +16,7 @@
   <div class="app">
     <!-- Sidebar -->
     <aside class="sidebar">
-      <div class="logo">
+      <div class="logo" id="logo">
         <i data-lucide="brain" class="logo-icon"></i>
         <span class="logo-text">Team Memory</span>
       </div>
@@ -87,9 +87,27 @@
       </nav>
 
       <div class="sidebar-footer">
-        <div class="agents-status">
-          <span class="status-dot"></span>
-          <span id="agents-count">0 агентов онлайн</span>
+        <div class="agents-status" id="agents-status-btn" role="button" tabindex="0" title="Показать подключённых агентов">
+          <div class="agents-counters">
+            <div class="agents-counter-row">
+              <span class="status-dot status-dot--agent"></span>
+              <span id="agents-count-agents">Агенты: 0</span>
+            </div>
+            <div class="agents-counter-row">
+              <span class="status-dot status-dot--ui"></span>
+              <span id="agents-count-ui">UI: 0</span>
+            </div>
+          </div>
+        </div>
+        <div class="agents-popup" id="agents-popup" style="display:none">
+          <div class="agents-popup-section">
+            <div class="agents-popup-header">Агенты</div>
+            <div class="agents-popup-list" id="agents-popup-agents"></div>
+          </div>
+          <div class="agents-popup-section">
+            <div class="agents-popup-header">UI-клиенты</div>
+            <div class="agents-popup-list" id="agents-popup-ui"></div>
+          </div>
         </div>
         <button class="sidebar-toggle" id="sidebar-toggle" title="Свернуть меню">
           <i data-lucide="panel-left-close" class="sidebar-toggle-icon"></i>
@@ -111,6 +129,12 @@
             <span class="stat">
               <span class="stat-value" id="stat-24h">0</span>
               <span class="stat-label">за 24ч</span>
+            </span>
+            <span class="stat-divider"></span>
+            <span class="embedding-indicator" id="embedding-indicator" title="">
+              <span class="embedding-dot" id="embedding-dot"></span>
+              <span class="stat-value" id="embedding-count">—</span>
+              <span class="stat-label">vectorized</span>
             </span>
           </div>
         </div>
@@ -290,6 +314,26 @@
           </button>
         </div>
         <button class="btn btn-primary btn-sm" id="btn-close-reveal">Готово</button>
+      </div>
+    </div>
+
+    <!-- Read Entry Modal -->
+    <div class="modal" id="read-modal">
+      <div class="modal-content read-modal-content">
+        <div class="modal-header">
+          <h2 id="read-modal-title"></h2>
+          <div class="read-modal-actions">
+            <button class="modal-action-btn" id="read-modal-edit" title="Редактировать">
+              <i data-lucide="pencil"></i>
+            </button>
+            <button class="modal-close" id="read-modal-close">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+        </div>
+        <div class="read-modal-meta" id="read-modal-meta"></div>
+        <div class="read-modal-body" id="read-modal-body"></div>
+        <div class="read-modal-tags" id="read-modal-tags"></div>
       </div>
     </div>
 

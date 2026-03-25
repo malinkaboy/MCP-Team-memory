@@ -11,6 +11,7 @@ interface ConnectedClient {
   id: string;
   name: string;
   agentName?: string;  // Token-derived identity, immutable
+  clientType: 'agent' | 'ui';
   connectedAt: Date;
 }
 
@@ -46,12 +47,12 @@ export class SyncWebSocketServer {
     if (!this.wss) return;
 
     this.wss.on('connection', (ws, req) => {
+      const url = new URL(req.url || '/', `http://${req.headers.host}`);
       // Verify token if auth is enabled
       const effectiveToken = this.apiToken?.trim();
       let resolvedAgentName: string | undefined;
 
       if (effectiveToken) {
-        const url = new URL(req.url || '/', `http://${req.headers.host}`);
         // SECURITY NOTE: query param token may leak to access logs, proxies, browser history.
         // Prefer Authorization: Bearer header. Query param kept for WebSocket clients that can't set headers.
         const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || url.searchParams.get('token');
@@ -77,13 +78,15 @@ export class SyncWebSocketServer {
       }
 
       const clientId = this.generateClientId();
-      const clientName = resolvedAgentName || req.headers['x-agent-name']?.toString() || `agent-${clientId.slice(0, 8)}`;
+      const clientType = url.searchParams.get('client_type') === 'ui' ? 'ui' as const : 'agent' as const;
+      const clientName = resolvedAgentName || req.headers['x-agent-name']?.toString() || (clientType === 'ui' ? `ui-${clientId.slice(0, 8)}` : `agent-${clientId.slice(0, 8)}`);
 
       const client: ConnectedClient = {
         ws,
         id: clientId,
         name: clientName,
         agentName: resolvedAgentName,
+        clientType,
         connectedAt: new Date()
       };
 
@@ -227,11 +230,12 @@ export class SyncWebSocketServer {
     return crypto.randomUUID();
   }
 
-  getConnectedClientsInfo(): Array<{ id: string; name: string; agentName?: string; connectedAt: string }> {
+  getConnectedClientsInfo(): Array<{ id: string; name: string; agentName?: string; clientType: 'agent' | 'ui'; connectedAt: string }> {
     return Array.from(this.clients.values()).map(c => ({
       id: c.id,
       name: c.name,
       agentName: c.agentName,
+      clientType: c.clientType,
       connectedAt: c.connectedAt.toISOString()
     }));
   }
