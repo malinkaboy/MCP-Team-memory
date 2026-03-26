@@ -787,20 +787,38 @@ function renderProjectsList() {
 
 function copyProjectId(btn) {
   const id = btn.dataset.id;
-  navigator.clipboard.writeText(id).then(() => {
-    const icon = btn.querySelector('[data-lucide]');
-    const span = btn.querySelector('span');
-    span.textContent = 'Скопировано';
-    icon.setAttribute('data-lucide', 'check');
-    btn.classList.add('copied');
-    lucide.createIcons({ nodes: [icon] });
+  const textarea = document.createElement('textarea');
+  textarea.value = id;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand('copy');
+  document.body.removeChild(textarea);
+
+  const icon = btn.querySelector('[data-lucide]');
+  const span = btn.querySelector('span');
+
+  if (!ok) {
+    span.textContent = 'Ошибка';
+    btn.classList.add('copy-failed');
     setTimeout(() => {
       span.textContent = 'ID';
-      icon.setAttribute('data-lucide', 'copy');
-      btn.classList.remove('copied');
-      lucide.createIcons({ nodes: [icon] });
-    }, 1500);
-  });
+      btn.classList.remove('copy-failed');
+    }, 2000);
+    return;
+  }
+
+  span.textContent = 'Скопировано';
+  icon.setAttribute('data-lucide', 'check');
+  btn.classList.add('copied');
+  lucide.createIcons({ nodes: [icon] });
+  setTimeout(() => {
+    span.textContent = 'ID';
+    icon.setAttribute('data-lucide', 'copy');
+    btn.classList.remove('copied');
+    lucide.createIcons({ nodes: [icon] });
+  }, 1500);
 }
 
 async function createProject() {
