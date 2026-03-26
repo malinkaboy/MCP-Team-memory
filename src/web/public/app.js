@@ -793,11 +793,22 @@ function copyProjectId(btn) {
   textarea.style.opacity = '0';
   document.body.appendChild(textarea);
   textarea.select();
-  document.execCommand('copy');
+  const ok = document.execCommand('copy');
   document.body.removeChild(textarea);
 
   const icon = btn.querySelector('[data-lucide]');
   const span = btn.querySelector('span');
+
+  if (!ok) {
+    span.textContent = 'Ошибка';
+    btn.classList.add('copy-failed');
+    setTimeout(() => {
+      span.textContent = 'ID';
+      btn.classList.remove('copy-failed');
+    }, 2000);
+    return;
+  }
+
   span.textContent = 'Скопировано';
   icon.setAttribute('data-lucide', 'check');
   btn.classList.add('copied');
