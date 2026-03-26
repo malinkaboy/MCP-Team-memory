@@ -787,20 +787,27 @@ function renderProjectsList() {
 
 function copyProjectId(btn) {
   const id = btn.dataset.id;
-  navigator.clipboard.writeText(id).then(() => {
-    const icon = btn.querySelector('[data-lucide]');
-    const span = btn.querySelector('span');
-    span.textContent = 'Скопировано';
-    icon.setAttribute('data-lucide', 'check');
-    btn.classList.add('copied');
+  const textarea = document.createElement('textarea');
+  textarea.value = id;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+
+  const icon = btn.querySelector('[data-lucide]');
+  const span = btn.querySelector('span');
+  span.textContent = 'Скопировано';
+  icon.setAttribute('data-lucide', 'check');
+  btn.classList.add('copied');
+  lucide.createIcons({ nodes: [icon] });
+  setTimeout(() => {
+    span.textContent = 'ID';
+    icon.setAttribute('data-lucide', 'copy');
+    btn.classList.remove('copied');
     lucide.createIcons({ nodes: [icon] });
-    setTimeout(() => {
-      span.textContent = 'ID';
-      icon.setAttribute('data-lucide', 'copy');
-      btn.classList.remove('copied');
-      lucide.createIcons({ nodes: [icon] });
-    }, 1500);
-  });
+  }, 1500);
 }
 
 async function createProject() {
