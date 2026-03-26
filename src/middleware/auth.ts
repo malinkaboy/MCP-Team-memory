@@ -22,8 +22,12 @@ export function createAuthMiddleware(
   }
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    // No token configured — auth disabled
+    // No token configured — auth disabled, but still extract X-Project-Id
     if (!trimmedToken) {
+      const projectId = req.headers['x-project-id'] as string | undefined;
+      if (projectId) {
+        (req as any).auth = { clientId: 'master', scopes: [], projectId };
+      }
       next();
       return;
     }
@@ -55,7 +59,8 @@ export function createAuthMiddleware(
         req.agentName = agentInfo.agentName;
         req.agentRole = agentInfo.role;
         // MCP SDK reads req.auth for StreamableHTTPServerTransport → extra.authInfo
-        (req as any).auth = { clientId: agentInfo.agentName, scopes: [agentInfo.role] };
+        const projectId = req.headers['x-project-id'] as string | undefined;
+        (req as any).auth = { clientId: agentInfo.agentName, scopes: [agentInfo.role], projectId };
         agentTokenStore.trackLastUsed(agentInfo.id);
         next();
         return;
@@ -73,7 +78,8 @@ export function createAuthMiddleware(
     }
 
     // Master token — full admin access, no agentName (author comes from params)
-    (req as any).auth = { clientId: 'master', scopes: ['admin'] };
+    const projectId = req.headers['x-project-id'] as string | undefined;
+    (req as any).auth = { clientId: 'master', scopes: ['admin'], projectId };
     next();
   };
 }

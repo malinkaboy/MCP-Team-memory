@@ -96,7 +96,7 @@ export class PgStorage {
 
     // Set FTS language for EVERY new connection (including those created during migrations)
     this.pool.on('connect', (client: pg.PoolClient) => {
-      client.query('SET app.fts_language = $1', [this.ftsLanguage]).catch((err) => {
+      client.query('SELECT set_config(\'app.fts_language\', $1, false)', [this.ftsLanguage]).catch((err) => {
         logger.warn({ err, ftsLanguage: this.ftsLanguage }, 'Failed to SET app.fts_language — queries will fall back to simple');
       });
     });

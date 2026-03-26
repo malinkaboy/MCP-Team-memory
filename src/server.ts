@@ -58,11 +58,11 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
     const tools: Tool[] = [
       {
         name: 'memory_read',
-        description: 'Читает командную память. По умолчанию возвращает компактный список (без content). Два сценария получения полного содержимого:\n1. Обзор → детали: memory_read() → получить ID → memory_read(ids=[...])\n2. Поиск: memory_read(search="ключевые слова") → memory_read(ids=[...])\nДля малых выборок: memory_read(search="...", mode="full", limit=5)',
+        description: '► КОГДА ВЫЗЫВАТЬ:\n• В НАЧАЛЕ сессии — проверь память проекта (memory_read() или memory_onboard).\n• ПЕРЕД началом новой задачи — поищи существующие решения (memory_read(search="...")).\n• Когда нужны детали записи — получи полное содержимое по ID.\n\nЧитает командную память. По умолчанию возвращает компактный список (без content). Два сценария получения полного содержимого:\n1. Обзор → детали: memory_read() → получить ID → memory_read(ids=[...])\n2. Поиск: memory_read(search="ключевые слова") → memory_read(ids=[...])\nДля малых выборок: memory_read(search="...", mode="full", limit=5)',
         inputSchema: {
           type: 'object',
           properties: {
-            project_id: { type: 'string', description: 'ID проекта (по умолчанию "default")' },
+            project_id: { type: 'string', description: 'ID проекта. Если не указан — берётся из заголовка X-Project-Id.' },
             category: {
               type: 'string',
               enum: ['architecture', 'tasks', 'decisions', 'issues', 'progress', 'conventions', 'all'],
@@ -97,11 +97,11 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_write',
-        description: 'Добавляет новую запись в командную память. Обязательные поля: category, title, content. Пример: memory_write(category="decisions", title="Выбран Zustand", content="Причины: ...", tags=["state"], priority="high")',
+        description: '► КОГДА ВЫЗЫВАТЬ — ОБЯЗАТЕЛЬНО записывай после каждого значимого действия:\n• Принял архитектурное или техническое решение → category="decisions"\n• Обнаружил баг или проблему → category="issues"\n• Завершил задачу или этап работы → category="progress"\n• Создал/изменил архитектуру (новый модуль, API, схема БД) → category="architecture"\n• Начал работу над новой задачей → category="tasks"\nНЕ ЗАВЕРШАЙ сессию, не записав итоги своей работы!\n\nДобавляет новую запись в командную память. Обязательные поля: category, title, content. Пример: memory_write(category="progress", title="Реализован API авторизации", content="Добавлены эндпоинты /login, /logout. JWT с refresh-токенами.", tags=["auth", "api"])',
         inputSchema: {
           type: 'object',
           properties: {
-            project_id: { type: 'string', description: 'ID проекта (по умолчанию "default")' },
+            project_id: { type: 'string', description: 'ID проекта. Если не указан — берётся из заголовка X-Project-Id.' },
             category: {
               type: 'string',
               enum: ['architecture', 'tasks', 'decisions', 'issues', 'progress', 'conventions'],
@@ -125,7 +125,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_update',
-        description: 'Обновляет существующую запись в памяти. Обязательное поле: id. Остальные поля — только те, которые нужно изменить. Пример: memory_update(id="...", status="completed", content="Новый текст")',
+        description: '► КОГДА ВЫЗЫВАТЬ:\n• Задача завершена → memory_update(id="...", status="completed")\n• Проблема решена → обнови content с описанием решения и status="completed"\n• Решение пересмотрено или уточнено → обнови content\n• Изменился приоритет или статус работы\nОБЯЗАТЕЛЬНО обновляй статус задач и проблем, когда их состояние меняется.\n\nОбновляет существующую запись в памяти. Обязательное поле: id. Остальные поля — только те, которые нужно изменить. Пример: memory_update(id="...", status="completed", content="Новый текст")',
         inputSchema: {
           type: 'object',
           properties: {
@@ -145,7 +145,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_delete',
-        description: 'Удаляет или архивирует запись из памяти. По умолчанию архивирует (archive=true). Для полного удаления: memory_delete(id="...", archive=false)',
+        description: '► КОГДА ВЫЗЫВАТЬ:\n• Когда запись устарела и больше не актуальна.\n• Предпочитай архивацию (по умолчанию) полному удалению.\n\nУдаляет или архивирует запись из памяти. По умолчанию архивирует (archive=true). Для полного удаления: memory_delete(id="...", archive=false)',
         inputSchema: {
           type: 'object',
           properties: {
@@ -157,7 +157,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_sync',
-        description: 'Получает последние изменения в памяти. Без параметров — изменения за 24 часа. Пример: memory_sync(since="2026-03-24T00:00:00Z")',
+        description: '► КОГДА ВЫЗЫВАТЬ:\n• В длительной сессии — проверяй изменения других агентов каждые 30+ минут.\n• После паузы — узнай, что изменилось, пока ты не работал.\n\nПолучает последние изменения в памяти. Без параметров — изменения за 24 часа. Пример: memory_sync(since="2026-03-24T00:00:00Z")',
         inputSchema: {
           type: 'object',
           properties: {
@@ -168,7 +168,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_unarchive',
-        description: 'Разархивирует запись, возвращая в активный статус.',
+        description: 'Разархивирует запись, возвращая в активный статус. Используй, когда архивированная запись снова стала актуальной.',
         inputSchema: {
           type: 'object',
           properties: { id: { type: 'string', description: 'ID записи' } },
@@ -177,7 +177,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_pin',
-        description: 'Закрепляет или открепляет запись. Закреплённые записи НЕ архивируются автоматически.',
+        description: '► КОГДА ВЫЗЫВАТЬ:\n• Когда запись критически важна и ДОЛЖНА быть видна всем агентам при каждом входе.\n• Закреплённые записи автоматически попадают в auto-context при старте сессии.\n\nЗакрепляет или открепляет запись. Закреплённые записи НЕ архивируются автоматически.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -204,7 +204,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_audit',
-        description: 'Просмотр истории изменений записи или проекта (аудит-лог).',
+        description: 'Просмотр истории изменений записи или проекта (аудит-лог). Используй для диагностики: кто и когда менял запись.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -216,7 +216,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_history',
-        description: 'Показывает историю версий записи. Используйте для отслеживания изменений.',
+        description: 'Показывает историю версий записи. Используй для сравнения изменений или отката к предыдущей версии.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -228,7 +228,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_export',
-        description: 'Экспортирует записи в формат Markdown или JSON.',
+        description: 'Экспортирует записи в формат Markdown или JSON. Используй, когда пользователь просит отчёт или выгрузку данных.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -240,7 +240,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_conventions',
-        description: 'Управление конвенциями проекта (стиль кода, паттерны, правила). ОБЯЗАТЕЛЬНЫЙ параметр: action.\n- action="list" — показать все конвенции\n- action="add" — добавить (title и content обязательны)\n- action="remove" — удалить (id обязателен)',
+        description: '► КОГДА ВЫЗЫВАТЬ:\n• Обнаружил повторяющийся паттерн, который должна соблюдать команда → action="add"\n• Пользователь просит зафиксировать правило или стандарт → action="add"\n• Перед code review — проверь конвенции → action="list"\n\nУправление конвенциями проекта (стиль кода, паттерны, правила). ОБЯЗАТЕЛЬНЫЙ параметр: action.\n- action="list" — показать все конвенции\n- action="add" — добавить (title и content обязательны)\n- action="remove" — удалить (id обязателен)',
         inputSchema: {
           type: 'object',
           properties: {
@@ -261,7 +261,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_cross_search',
-        description: 'Поиск паттернов и решений МЕЖДУ проектами. ОБЯЗАТЕЛЬНЫЙ параметр: query. Пример: memory_cross_search(query="аутентификация JWT", category="decisions")',
+        description: '► КОГДА ВЫЗЫВАТЬ:\n• Перед реализацией нового паттерна — проверь, решалась ли задача в других проектах.\n• Когда ищешь best practices или примеры решений.\n\nПоиск паттернов и решений МЕЖДУ проектами. ОБЯЗАТЕЛЬНЫЙ параметр: query. Пример: memory_cross_search(query="аутентификация JWT", category="decisions")',
         inputSchema: {
           type: 'object',
           properties: {
@@ -280,11 +280,11 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
       },
       {
         name: 'memory_onboard',
-        description: 'Генерирует полную сводку проекта для нового агента/члена команды: конвенции, архитектура, решения, задачи, проблемы, стек. Один вызов вместо десяти memory_read.',
+        description: '► КОГДА ВЫЗЫВАТЬ:\n• В НАЧАЛЕ КАЖДОЙ новой сессии — вызови ПЕРВЫМ ДЕЛОМ для загрузки контекста проекта.\n• При переключении на другой проект.\nОдин вызов вместо десяти memory_read — получишь конвенции, архитектуру, решения, задачи, проблемы, стек.\n\nГенерирует полную сводку проекта для нового агента/члена команды.',
         inputSchema: {
           type: 'object',
           properties: {
-            project_id: { type: 'string', description: 'ID проекта (по умолчанию "default")' },
+            project_id: { type: 'string', description: 'ID проекта. Если не указан — берётся из заголовка X-Project-Id.' },
           },
         }
       },
@@ -308,10 +308,30 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
     const { name, arguments: rawArgs } = request.params;
     const args = coerceArrayFields(rawArgs);
 
-    // Extract agent identity from auth context (HTTP transport with agent token)
+    // Extract agent identity and default project from auth context (HTTP transport)
     const callerAgent = (extra as any)?.authInfo?.clientId as string | undefined;
     const callerScopes = (extra as any)?.authInfo?.scopes as string[] | undefined;
     const isAgentToken = callerAgent && callerAgent !== 'master';
+    const headerProjectId = (extra as any)?.authInfo?.projectId as string | undefined;
+
+    // Resolve project_id: explicit param > X-Project-Id header. No fallback to default.
+    const resolveProjectId = (paramProjectId: string | undefined): string | undefined => {
+      return paramProjectId || headerProjectId;
+    };
+    // Tools that require project context must have a project_id from any source
+    const requireProjectId = (paramProjectId: string | undefined, _toolName: string): string | { error: true; response: any } => {
+      const resolved = resolveProjectId(paramProjectId);
+      if (!resolved) {
+        return {
+          error: true,
+          response: {
+            content: [{ type: 'text', text: `❌ project_id обязателен. Укажите project_id в параметрах или настройте заголовок X-Project-Id в конфигурации MCP клиента.\n\nПример конфигурации:\n"headers": { "X-Project-Id": "<uuid проекта>" }` }],
+            isError: true,
+          },
+        };
+      }
+      return resolved;
+    };
 
     try {
       switch (name) {
@@ -320,8 +340,10 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
           if (!parsed.success) {
             return { content: [{ type: 'text', text: `❌ Ошибка валидации: ${formatZodError(parsed.error)}` }], isError: true };
           }
+          const readProjectId = requireProjectId(parsed.data.project_id, 'memory_read');
+          if (typeof readProjectId !== 'string') return readProjectId.response;
           const params: ReadParams = {
-            projectId: parsed.data.project_id || undefined,
+            projectId: readProjectId,
             category: parsed.data.category,
             domain: parsed.data.domain,
             search: parsed.data.search,
@@ -366,9 +388,11 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
             return { content: [{ type: 'text', text: `❌ Ошибка валидации: ${formatZodError(parsed.error)}` }], isError: true };
           }
           const { project_id, ...writeData } = parsed.data;
+          const writeProjectId = requireProjectId(project_id, 'memory_write');
+          if (typeof writeProjectId !== 'string') return writeProjectId.response;
           // Override author if agent token was used (HTTP transport — identity from token, not params)
           if (isAgentToken) writeData.author = callerAgent;
-          const params: WriteParams = { ...writeData, projectId: project_id };
+          const params: WriteParams = { ...writeData, projectId: writeProjectId };
           const entry = await memoryManager.write(params);
           const domTxt = entry.domain ? `\n**Домен**: ${entry.domain}` : '';
           const pinTxt = entry.pinned ? '\n📌 Закреплена' : '';
@@ -421,7 +445,9 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
           if (!parsed.success) {
             return { content: [{ type: 'text', text: `❌ Ошибка валидации: ${formatZodError(parsed.error)}` }], isError: true };
           }
-          const params: SyncParams = { projectId: parsed.data.project_id || undefined, since: parsed.data.since };
+          const syncProjectId = requireProjectId(parsed.data.project_id, 'memory_sync');
+          if (typeof syncProjectId !== 'string') return syncProjectId.response;
+          const params: SyncParams = { projectId: syncProjectId, since: parsed.data.since };
           const result = await memoryManager.sync(params);
           if (result.entries.length === 0) {
             return { content: [{ type: 'text', text: `✅ Синхронизировано. Новых изменений нет.\nПоследнее обновление: ${result.lastUpdated}` }] };
@@ -490,12 +516,13 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
             return { content: [{ type: 'text', text: `❌ Ошибка валидации: ${formatZodError(parsed.error)}` }], isError: true };
           }
           const { entry_id: auditEntryId, project_id: auditProjectId, limit: auditLimit } = parsed.data;
+          const resolvedAuditProjectId = resolveProjectId(auditProjectId);
 
           let auditEntries;
           if (auditEntryId) {
             auditEntries = await auditLogger.getByEntry(auditEntryId, auditLimit);
-          } else if (auditProjectId) {
-            auditEntries = await auditLogger.getByProject(auditProjectId, auditLimit);
+          } else if (resolvedAuditProjectId) {
+            auditEntries = await auditLogger.getByProject(resolvedAuditProjectId, auditLimit);
           } else {
             auditEntries = await auditLogger.getRecent(auditLimit);
           }
@@ -548,9 +575,11 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
             return { content: [{ type: 'text', text: `❌ Ошибка валидации: ${formatZodError(parsed.error)}` }], isError: true };
           }
           const { project_id: expProjectId, format: expFormat, category: expCategory } = parsed.data;
+          const resolvedExpProjectId = requireProjectId(expProjectId, 'memory_export');
+          if (typeof resolvedExpProjectId !== 'string') return resolvedExpProjectId.response;
 
           const expEntries = await memoryManager.read({
-            projectId: expProjectId,
+            projectId: resolvedExpProjectId,
             category: expCategory as any,
             limit: 500,
             status: 'active',
@@ -589,7 +618,9 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
 
         case 'memory_conventions': {
           const action = args?.action as string;
-          const projectId = (args?.project_id as string) || undefined;
+          const convProjectId = requireProjectId(args?.project_id as string | undefined, 'memory_conventions');
+          if (typeof convProjectId !== 'string') return convProjectId.response;
+          const projectId: string | undefined = convProjectId;
 
           if (action === 'list') {
             const entries = await memoryManager.read({
@@ -640,8 +671,9 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
         }
 
         case 'memory_onboard': {
-          const projectId = args?.project_id as string | undefined;
-          const summary = await memoryManager.generateOnboarding(projectId);
+          const onboardProjectId = requireProjectId(args?.project_id as string | undefined, 'memory_onboard');
+          if (typeof onboardProjectId !== 'string') return onboardProjectId.response;
+          const summary = await memoryManager.generateOnboarding(onboardProjectId);
           return { content: [{ type: 'text', text: summary }] };
         }
 
@@ -713,7 +745,8 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
     }
 
     try {
-      const projectId = promptArgs?.project_id;
+      const promptHeaderProjectId = (extra as any)?.authInfo?.projectId as string | undefined;
+      const projectId = promptArgs?.project_id || promptHeaderProjectId;
       const context = promptArgs?.context;
       const parsed = promptArgs?.limit ? parseInt(promptArgs.limit, 10) : 10;
       const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 10;

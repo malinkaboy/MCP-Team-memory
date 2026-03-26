@@ -133,7 +133,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         badge.className = 'agent-badge';
         badge.textContent = authInfo.agentName;
         badge.setAttribute('data-tooltip', `${authInfo.agentName} · ${authInfo.role || 'agent'}`);
-        badge.setAttribute('data-tooltip-pos', 'bottom');
         const footer = document.querySelector('.sidebar-footer');
         footer.insertBefore(badge, footer.firstChild);
       }
@@ -557,6 +556,7 @@ function initEntryActions() {
       e.stopPropagation();
       if (btn.dataset.action === 'deleteProject') deleteProject(btn.dataset.id);
       if (btn.dataset.action === 'renameProject') renameProject(btn.dataset.id, btn.dataset.name);
+      if (btn.dataset.action === 'copyProjectId') copyProjectId(btn);
     });
   }
 }
@@ -767,6 +767,9 @@ function renderProjectsList() {
         </div>
       </div>
       <div class="project-item-actions">
+        <button class="btn-copy-id" data-action="copyProjectId" data-id="${escapeHtml(p.id)}" data-tooltip="Скопировать Project ID">
+          <i data-lucide="copy"></i> <span>ID</span>
+        </button>
         ${p.name !== 'default' && isMasterUser ? `
           <button class="btn-icon" data-action="renameProject" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" title="Переименовать">
             <i data-lucide="pencil"></i>
@@ -780,6 +783,24 @@ function renderProjectsList() {
   `).join('');
 
   lucide.createIcons();
+}
+
+function copyProjectId(btn) {
+  const id = btn.dataset.id;
+  navigator.clipboard.writeText(id).then(() => {
+    const icon = btn.querySelector('[data-lucide]');
+    const span = btn.querySelector('span');
+    span.textContent = 'Скопировано';
+    icon.setAttribute('data-lucide', 'check');
+    btn.classList.add('copied');
+    lucide.createIcons({ nodes: [icon] });
+    setTimeout(() => {
+      span.textContent = 'ID';
+      icon.setAttribute('data-lucide', 'copy');
+      btn.classList.remove('copied');
+      lucide.createIcons({ nodes: [icon] });
+    }, 1500);
+  });
 }
 
 async function createProject() {

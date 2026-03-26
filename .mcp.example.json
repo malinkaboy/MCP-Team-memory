@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "team-memory": {
+      "type": "http",
+      "url": "http://localhost:3846/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-agent-token>",
+        "X-Project-Id": "<your-project-uuid>"
+      }
+    }
+  }
+}
