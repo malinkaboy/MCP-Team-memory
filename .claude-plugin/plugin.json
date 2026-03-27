@@ -1,0 +1,19 @@
+{
+  "name": "team-memory",
+  "version": "2.2.0",
+  "description": "Team Memory MCP — shared knowledge base for Claude Code agents with mandatory session lifecycle skills",
+  "author": {
+    "name": "Moorinet Team",
+    "email": "a.nozhenko@moorinet.com"
+  },
+  "homepage": "https://github.com/Antony-A-tech/team-memory-mcp",
+  "repository": "https://github.com/Antony-A-tech/team-memory-mcp",
+  "license": "MIT",
+  "keywords": [
+    "team-memory",
+    "mcp",
+    "shared-knowledge",
+    "ai-agents",
+    "session-lifecycle"
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "name": "@malinkaboy/team-memory-mcp",
+  "name": "@antony-A-tech/team-memory-mcp",
   "version": "2.2.0",
   "description": "MCP Server for team memory - shared knowledge base for Claude Code agents (PostgreSQL, multi-project)",
   "type": "module",
@@ -9,12 +9,14 @@
   },
   "files": [
     "dist",
+    "skills",
+    ".claude-plugin",
     "README.md",
     "LICENSE"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/malinkaboy/team-memory-mcp"
+    "url": "https://github.com/Antony-A-tech/team-memory-mcp"
   },
   "publishConfig": {
     "access": "public"

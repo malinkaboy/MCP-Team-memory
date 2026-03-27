@@ -1,6 +1,6 @@
 # Team Memory MCP Server
 
-[![CI](https://github.com/malinkaboy/MCP-Team-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/malinkaboy/MCP-Team-memory/actions/workflows/ci.yml)
+[![CI](https://github.com/Antony-A-tech/MCP-Team-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/Antony-A-tech/MCP-Team-memory/actions/workflows/ci.yml)
 
 Shared team memory for AI coding agents. A [Model Context Protocol](https://modelcontextprotocol.io/) server that gives Claude Code (and other MCP clients) persistent, searchable, real-time team knowledge.
 
