@@ -27,33 +27,37 @@ When multiple developers use AI agents on the same codebase, each agent starts w
 docker compose up -d postgres
 ```
 
-### 2. Configure Claude Code
+### 2. Start the server (HTTP mode)
 
-Add to `.claude/settings.json`:
+```bash
+DATABASE_URL="postgresql://memory:memory@localhost:5432/team_memory" \
+MEMORY_TRANSPORT=http \
+MEMORY_API_TOKEN="your-master-token" \
+node dist/index.js
+```
+
+Open `http://localhost:3846` for the dashboard. Create agent tokens in the admin panel.
+
+### 3. Configure Claude Code
+
+Add to your project's `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "team-memory": {
-      "command": "node",
-      "args": ["/path/to/team-memory-mcp/dist/index.js"],
-      "env": {
-        "DATABASE_URL": "postgresql://memory:memory@localhost:5432/team_memory"
+      "type": "http",
+      "url": "http://localhost:3846/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_TOKEN>",
+        "X-Project-Id": "<PROJECT_UUID>"
       }
     }
   }
 }
 ```
 
-### 3. HTTP mode (Web UI + remote access)
-
-```bash
-DATABASE_URL="postgresql://memory:memory@localhost:5432/team_memory" \
-MEMORY_TRANSPORT=http \
-node dist/index.js
-```
-
-Open `http://localhost:3846` for the dashboard.
+Replace `<YOUR_TOKEN>` with your agent token (`tm_...`) and `<PROJECT_UUID>` with the project UUID from the dashboard.
 
 ### 4. Docker Compose (full stack)
 
@@ -115,7 +119,7 @@ Each team member gets a personal token (`tm_...`). The author field is set autom
 ```bash
 npm install
 npm run build
-npm test          # 109 tests
+npm test          # 140 tests
 ```
 
 ## Security
@@ -154,33 +158,37 @@ MIT
 docker compose up -d postgres
 ```
 
-### 2. Настройка Claude Code
+### 2. Запуск сервера (HTTP-режим)
 
-Добавьте в `.claude/settings.json`:
+```bash
+DATABASE_URL="postgresql://memory:memory@localhost:5432/team_memory" \
+MEMORY_TRANSPORT=http \
+MEMORY_API_TOKEN="ваш-master-токен" \
+node dist/index.js
+```
+
+Дашборд: `http://localhost:3846`. Создайте токены для агентов в панели администратора.
+
+### 3. Настройка Claude Code
+
+Добавьте в `.mcp.json` в корне вашего проекта:
 
 ```json
 {
   "mcpServers": {
     "team-memory": {
-      "command": "node",
-      "args": ["/путь/к/team-memory-mcp/dist/index.js"],
-      "env": {
-        "DATABASE_URL": "postgresql://memory:memory@localhost:5432/team_memory"
+      "type": "http",
+      "url": "http://localhost:3846/mcp",
+      "headers": {
+        "Authorization": "Bearer <ВАШ_ТОКЕН>",
+        "X-Project-Id": "<UUID_ПРОЕКТА>"
       }
     }
   }
 }
 ```
 
-### 3. HTTP-режим (Web UI + удалённый доступ)
-
-```bash
-DATABASE_URL="postgresql://memory:memory@localhost:5432/team_memory" \
-MEMORY_TRANSPORT=http \
-node dist/index.js
-```
-
-Дашборд: `http://localhost:3846`
+Замените `<ВАШ_ТОКЕН>` на ваш токен агента (`tm_...`), а `<UUID_ПРОЕКТА>` — на UUID проекта из дашборда.
 
 ## Идентификация агентов
 
@@ -256,7 +264,7 @@ server {
 ```bash
 npm install
 npm run build
-npm test          # 109 тестов
+npm test          # 140 тестов
 npm run clean     # очистка dist/
 ```
 

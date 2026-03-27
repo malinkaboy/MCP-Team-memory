@@ -304,6 +304,12 @@ function switchProject(projectId) {
   populateEntryDomainSelect();
   loadEntries();
   loadStats();
+  // Reconnect WebSocket with new project_id
+  if (ws) {
+    ws.onclose = null; // prevent auto-reconnect with old project_id
+    ws.close();
+  }
+  initWebSocket();
 }
 
 function populateEntryDomainSelect() {
@@ -1233,7 +1239,8 @@ async function loadAgentsPopup() {
   if (!agentsList || !uiList) return;
 
   try {
-    const response = await authFetch(`${API_BASE}/agents`);
+    const params = currentProjectId ? `?project_id=${currentProjectId}` : '';
+    const response = await authFetch(`${API_BASE}/agents${params}`);
     const result = await response.json();
     const all = result.success ? (result.agents || []) : [];
 
@@ -1259,7 +1266,8 @@ async function loadAgentsPopup() {
 
 async function updateAgentCounters() {
   try {
-    const response = await authFetch(`${API_BASE}/agents`);
+    const params = currentProjectId ? `?project_id=${currentProjectId}` : '';
+    const response = await authFetch(`${API_BASE}/agents${params}`);
     const result = await response.json();
     const all = result.success ? (result.agents || []) : [];
     const agents = all.filter(a => a.clientType === 'agent');
@@ -1287,6 +1295,7 @@ function initWebSocket() {
   const params = new URLSearchParams();
   if (AUTH_TOKEN) params.set('token', AUTH_TOKEN);
   params.set('client_type', 'ui');
+  if (currentProjectId) params.set('project_id', currentProjectId);
   const wsUrl = `${protocol}//${window.location.host}/ws?${params.toString()}`;
 
   try {
@@ -1319,31 +1328,49 @@ function initWebSocket() {
   }
 }
 
+function isEventForCurrentProject(payload) {
+  if (!currentProjectId) return true; // no project selected — show all
+  if (!payload.projectId) return true; // event has no project — global event
+  return payload.projectId === currentProjectId;
+}
+
 function handleWSMessage(data) {
   switch (data.type) {
     case 'memory:created':
     case 'memory:updated':
     case 'memory:deleted':
-      loadEntries();
-      loadStats();
-      if (data.type === 'memory:created') {
-        showToast('Новая запись добавлена', 'info');
+      if (isEventForCurrentProject(data.payload)) {
+        loadEntries();
+        loadStats();
+        if (data.type === 'memory:created') {
+          showToast('Новая запись добавлена', 'info');
+        }
       }
       break;
 
     case 'agent:connected':
-      if (!data.payload.renamed) {
-        loadStats();
-      }
-      if (document.getElementById('agents-popup')?.style.display !== 'none') {
-        loadAgentsPopup();
+      if (isEventForCurrentProject(data.payload)) {
+        if (!data.payload.renamed) {
+          loadStats();
+        }
+        const popupVisible = document.getElementById('agents-popup')?.style.display !== 'none';
+        if (popupVisible) {
+          loadAgentsPopup();
+        } else {
+          updateAgentCounters();
+        }
       }
       break;
 
     case 'agent:disconnected':
-      loadStats();
-      if (document.getElementById('agents-popup')?.style.display !== 'none') {
-        loadAgentsPopup();
+      if (isEventForCurrentProject(data.payload)) {
+        loadStats();
+        const popupVisible = document.getElementById('agents-popup')?.style.display !== 'none';
+        if (popupVisible) {
+          loadAgentsPopup();
+        } else {
+          updateAgentCounters();
+        }
       }
       break;
   }

@@ -162,7 +162,7 @@ export class WebServer {
         const stats = await this.memoryManager.getStats(projectId);
 
         if (this.wsServer) {
-          stats.connectedAgents = this.wsServer.getConnectedCount();
+          stats.connectedAgents = this.wsServer.getConnectedCount(projectId);
         }
 
         const embedding = await this.memoryManager.getEmbeddingStats();
@@ -173,9 +173,10 @@ export class WebServer {
       }
     });
 
-    app.get('/api/agents', (_req: Request, res: Response) => {
+    app.get('/api/agents', (req: Request, res: Response) => {
       try {
-        const agents = this.wsServer?.getConnectedClientsInfo() || [];
+        const projectId = req.query.project_id as string | undefined;
+        const agents = this.wsServer?.getConnectedClientsInfo(projectId) || [];
         res.json({ success: true, agents });
       } catch (error) {
         logger.error({ err: error }, 'API error');

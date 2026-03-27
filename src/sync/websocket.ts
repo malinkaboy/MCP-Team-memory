@@ -12,6 +12,7 @@ interface ConnectedClient {
   name: string;
   agentName?: string;  // Token-derived identity, immutable
   clientType: 'agent' | 'ui';
+  projectId?: string;
   connectedAt: Date;
 }
 
@@ -79,6 +80,7 @@ export class SyncWebSocketServer {
 
       const clientId = this.generateClientId();
       const clientType = url.searchParams.get('client_type') === 'ui' ? 'ui' as const : 'agent' as const;
+      const projectId = url.searchParams.get('project_id') || undefined;
       const clientName = resolvedAgentName || req.headers['x-agent-name']?.toString() || (clientType === 'ui' ? `ui-${clientId.slice(0, 8)}` : `agent-${clientId.slice(0, 8)}`);
 
       const client: ConnectedClient = {
@@ -87,6 +89,7 @@ export class SyncWebSocketServer {
         name: clientName,
         agentName: resolvedAgentName,
         clientType,
+        projectId,
         connectedAt: new Date()
       };
 
@@ -98,14 +101,15 @@ export class SyncWebSocketServer {
         payload: {
           clientId,
           clientName,
-          connectedClients: this.getConnectedClientsInfo()
+          projectId,
+          connectedClients: this.getConnectedClientsInfo(projectId)
         },
         timestamp: new Date().toISOString()
       });
 
       this.broadcastExcept(clientId, {
         type: 'agent:connected',
-        payload: { clientId, clientName, agentName: resolvedAgentName },
+        payload: { clientId, clientName, agentName: resolvedAgentName, projectId },
         timestamp: new Date().toISOString()
       });
 
@@ -120,10 +124,10 @@ export class SyncWebSocketServer {
 
       ws.on('close', () => {
         this.clients.delete(clientId);
-        logger.info({ clientName, clientId }, 'Client disconnected');
+        logger.info({ clientName, clientId, projectId }, 'Client disconnected');
         this.broadcast({
           type: 'agent:disconnected',
-          payload: { clientId, clientName },
+          payload: { clientId, clientName, projectId },
           timestamp: new Date().toISOString()
         });
       });
@@ -168,7 +172,7 @@ export class SyncWebSocketServer {
           client.name = newName;
           this.broadcast({
             type: 'agent:connected',
-            payload: { clientId, clientName: newName, renamed: true },
+            payload: { clientId, clientName: newName, projectId: client.projectId, renamed: true },
             timestamp: new Date().toISOString()
           });
         }
@@ -230,18 +234,28 @@ export class SyncWebSocketServer {
     return crypto.randomUUID();
   }
 
-  getConnectedClientsInfo(): Array<{ id: string; name: string; agentName?: string; clientType: 'agent' | 'ui'; connectedAt: string }> {
-    return Array.from(this.clients.values()).map(c => ({
+  getConnectedClientsInfo(projectId?: string): Array<{ id: string; name: string; agentName?: string; clientType: 'agent' | 'ui'; projectId?: string; connectedAt: string }> {
+    let clients = Array.from(this.clients.values());
+    if (projectId) {
+      clients = clients.filter(c => c.projectId === projectId);
+    }
+    return clients.map(c => ({
       id: c.id,
       name: c.name,
       agentName: c.agentName,
       clientType: c.clientType,
+      projectId: c.projectId,
       connectedAt: c.connectedAt.toISOString()
     }));
   }
 
-  getConnectedCount(): number {
-    return this.clients.size;
+  getConnectedCount(projectId?: string): number {
+    if (!projectId) return this.clients.size;
+    let count = 0;
+    for (const client of this.clients.values()) {
+      if (client.projectId === projectId) count++;
+    }
+    return count;
   }
 
   stop(): void {
