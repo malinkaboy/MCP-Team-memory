@@ -160,8 +160,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initProjectsModal();
   initEntryActions();
   initAgentsPopup();
-  initWebSocket();
   await loadProjects();
+  initWebSocket();
   loadEntries();
   loadStats();
 });
