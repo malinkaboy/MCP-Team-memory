@@ -287,24 +287,26 @@ export class PgStorage {
   }
 
   async removeProjectDomain(projectId: string, slug: string): Promise<{ deleted: boolean; entriesAffected: number }> {
-    // Reset domain on entries that use this domain
-    const updateResult = await this.pool.query(
-      'UPDATE entries SET domain = NULL WHERE project_id = $1 AND domain = $2',
-      [projectId, slug]
-    );
-    const entriesAffected = updateResult.rowCount ?? 0;
-
-    // Delete the domain
+    // Delete the domain first — if it doesn't exist, bail out without touching entries
     const deleteResult = await this.pool.query(
       'DELETE FROM project_domains WHERE project_id = $1 AND slug = $2',
       [projectId, slug]
     );
     const deleted = (deleteResult.rowCount ?? 0) > 0;
 
-    // Sync projects.domains TEXT[] for backward compatibility
-    if (deleted) {
-      await this.syncProjectDomainsArray(projectId);
+    if (!deleted) {
+      return { deleted: false, entriesAffected: 0 };
     }
+
+    // Only now reset domain on entries that used this domain
+    const updateResult = await this.pool.query(
+      'UPDATE entries SET domain = NULL WHERE project_id = $1 AND domain = $2',
+      [projectId, slug]
+    );
+    const entriesAffected = updateResult.rowCount ?? 0;
+
+    // Sync projects.domains TEXT[] for backward compatibility
+    await this.syncProjectDomainsArray(projectId);
 
     return { deleted, entriesAffected };
   }
