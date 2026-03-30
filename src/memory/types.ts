@@ -302,3 +302,13 @@ export const DOMAIN_INFO: Record<string, { name: string; icon: string }> = {
   database: { name: 'База данных', icon: '🗄️' },
   testing: { name: 'Тестирование', icon: '🧪' },
 };
+
+// Default domain metadata for project_domains table (Lucide icons + descriptions)
+export const DEFAULT_DOMAIN_META: Record<string, { name: string; icon: string; description: string }> = {
+  backend:        { name: 'Backend',        icon: 'server',     description: 'Серверная логика, API, бизнес-логика' },
+  frontend:       { name: 'Frontend',       icon: 'monitor',    description: 'Клиентская часть, UI/UX' },
+  infrastructure: { name: 'Infrastructure', icon: 'network',    description: 'Инфраструктура, сети, серверы' },
+  devops:         { name: 'DevOps',         icon: 'container',  description: 'CI/CD, деплой, мониторинг' },
+  database:       { name: 'Database',       icon: 'database',   description: 'Базы данных, миграции, схемы' },
+  testing:        { name: 'Testing',        icon: 'test-tubes', description: 'Тестирование, QA' },
+};

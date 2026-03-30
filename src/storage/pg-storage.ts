@@ -145,11 +145,22 @@ export class PgStorage {
       [DEFAULT_PROJECT_ID]
     );
     if (rows.length === 0) {
-      const { DEFAULT_DOMAINS: domains } = await import('../memory/types.js');
+      const { DEFAULT_DOMAINS: domains, DEFAULT_DOMAIN_META: meta } = await import('../memory/types.js');
       await this.pool.query(
         `INSERT INTO projects (id, name, description, domains) VALUES ($1, $2, $3, $4)`,
         [DEFAULT_PROJECT_ID, 'default', 'Default project for team memory', domains]
       );
+      // Seed project_domains for the default project
+      for (let i = 0; i < domains.length; i++) {
+        const slug = domains[i];
+        const m = meta[slug];
+        await this.pool.query(
+          `INSERT INTO project_domains (project_id, slug, name, description, icon, sort_order, is_default)
+           VALUES ($1, $2, $3, $4, $5, $6, true)
+           ON CONFLICT (project_id, slug) DO NOTHING`,
+          [DEFAULT_PROJECT_ID, slug, m?.name || slug, m?.description || '', m?.icon || 'tag', i]
+        );
+      }
     }
   }
 
@@ -161,13 +172,27 @@ export class PgStorage {
     domains?: string[];
   }): Promise<Project> {
     const id = crypto.randomUUID();
-    const { DEFAULT_DOMAINS: defaultDomains } = await import('../memory/types.js');
+    const { DEFAULT_DOMAINS: defaultDomains, DEFAULT_DOMAIN_META: meta } = await import('../memory/types.js');
+    const domainSlugs = params.domains || defaultDomains;
     const { rows } = await this.pool.query(
       `INSERT INTO projects (id, name, description, domains)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [id, params.name, params.description || '', params.domains || defaultDomains]
+      [id, params.name, params.description || '', domainSlugs]
     );
+
+    // Seed project_domains rows for the new project
+    for (let i = 0; i < domainSlugs.length; i++) {
+      const slug = domainSlugs[i];
+      const m = meta[slug];
+      await this.pool.query(
+        `INSERT INTO project_domains (project_id, slug, name, description, icon, sort_order, is_default)
+         VALUES ($1, $2, $3, $4, $5, $6, true)
+         ON CONFLICT (project_id, slug) DO NOTHING`,
+        [id, slug, m?.name || slug, m?.description || '', m?.icon || 'tag', i]
+      );
+    }
+
     return rowToProject(rows[0]);
   }
 
