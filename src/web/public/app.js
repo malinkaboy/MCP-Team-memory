@@ -113,7 +113,8 @@ const categoryConfig = {
   tasks: { title: 'Задачи', icon: 'clipboard-list' },
   decisions: { title: 'Решения', icon: 'check-circle-2' },
   issues: { title: 'Проблемы', icon: 'bug' },
-  progress: { title: 'Прогресс', icon: 'trending-up' }
+  progress: { title: 'Прогресс', icon: 'trending-up' },
+  conventions: { title: 'Конвенции', icon: 'book-open' }
 };
 
 // Initialize
@@ -1252,6 +1253,7 @@ async function loadStats() {
       document.getElementById('count-decisions').textContent = stats.byCategory.decisions || 0;
       document.getElementById('count-issues').textContent = stats.byCategory.issues || 0;
       document.getElementById('count-progress').textContent = stats.byCategory.progress || 0;
+      document.getElementById('count-conventions').textContent = stats.byCategory.conventions || 0;
 
       document.getElementById('stat-total').textContent = stats.totalEntries;
       document.getElementById('stat-24h').textContent = stats.recentActivity?.last24h || 0;
