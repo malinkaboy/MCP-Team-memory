@@ -95,8 +95,17 @@ export class PersonalNotesStorage {
     return rows.map(r => this.rowToNote(r));
   }
 
-  async getById(id: string): Promise<PersonalNote | null> {
-    const { rows } = await this.pool.query('SELECT * FROM personal_notes WHERE id = $1', [id]);
+  async getById(id: string, agentTokenId?: string | null): Promise<PersonalNote | null> {
+    const conditions = ['id = $1'];
+    const params: unknown[] = [id];
+    if (agentTokenId) {
+      conditions.push('agent_token_id = $2');
+      params.push(agentTokenId);
+    }
+    const { rows } = await this.pool.query(
+      `SELECT * FROM personal_notes WHERE ${conditions.join(' AND ')}`,
+      params,
+    );
     return rows.length > 0 ? this.rowToNote(rows[0]) : null;
   }
 
@@ -118,8 +127,13 @@ export class PersonalNotesStorage {
     if (updates.sessionId !== undefined) { setClauses.push(`session_id = $${idx++}`); params.push(updates.sessionId); }
 
     if (setClauses.length === 0) {
-      const note = await this.getById(id);
-      if (!note) throw new Error('Note not found');
+      const note = await this.getById(id, agentTokenId);
+      if (!note) {
+        // Distinguish not-found from access-denied
+        const { rows } = await this.pool.query('SELECT id FROM personal_notes WHERE id = $1', [id]);
+        if (rows.length === 0) throw new Error('Note not found');
+        throw new Error('Access denied: not your note');
+      }
       return note;
     }
 

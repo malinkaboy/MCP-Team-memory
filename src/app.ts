@@ -154,28 +154,9 @@ async function main(): Promise<void> {
     }
   }
 
-  // Qdrant vector store (optional, replaces pgvector for vector search)
-  if (config.vectorStore === 'qdrant') {
-    try {
-      const { QdrantVectorStore } = await import('./vector/qdrant-store.js');
-      const vectorStore = new QdrantVectorStore(config.qdrantUrl, config.qdrantApiKey);
-
-      const embProvider = memoryManager.getEmbeddingProvider();
-      const dims = embProvider?.dimensions ?? 768;
-
-      await vectorStore.ensureCollection('entries', dims);
-      await vectorStore.createPayloadIndex('entries', 'project_id', 'keyword');
-      await vectorStore.createPayloadIndex('entries', 'category', 'keyword');
-      await vectorStore.createPayloadIndex('entries', 'status', 'keyword');
-      await vectorStore.createPayloadIndex('entries', 'author', 'keyword');
-      await vectorStore.createPayloadIndex('entries', 'domain', 'keyword');
-
-      memoryManager.setVectorStore(vectorStore);
-      logger.info({ url: config.qdrantUrl }, 'Qdrant vector store connected');
-    } catch (err) {
-      logger.warn({ err }, 'Failed to connect to Qdrant — vector search will use pgvector fallback');
-    }
-  }
+  // Qdrant vector store — shared setup (entries + personal_notes collections)
+  const { setupQdrant } = await import('./vector/setup.js');
+  await setupQdrant(config, memoryManager);
 
   // Personal Notes manager (optional — requires agent tokens)
   let notesManager: import('./notes/manager.js').NotesManager | undefined;
@@ -184,16 +165,6 @@ async function main(): Promise<void> {
     const { NotesManager } = await import('./notes/manager.js');
     const notesStorage = new PersonalNotesStorage(storage.getPool());
     notesManager = new NotesManager(notesStorage, memoryManager.getVectorStore() ?? undefined, memoryManager.getEmbeddingProvider() ?? undefined);
-
-    // Ensure Qdrant collection for personal_notes
-    const vs = memoryManager.getVectorStore();
-    if (vs) {
-      const dims = memoryManager.getEmbeddingProvider()?.dimensions ?? 768;
-      await vs.ensureCollection('personal_notes', dims);
-      await vs.createPayloadIndex('personal_notes', 'agent_token_id', 'keyword');
-      await vs.createPayloadIndex('personal_notes', 'project_id', 'keyword');
-      await vs.createPayloadIndex('personal_notes', 'session_id', 'keyword');
-    }
     logger.info('Personal notes manager initialized');
   }
 

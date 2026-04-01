@@ -953,9 +953,9 @@ export class TeamMemoryMCPServer {
   private server: Server;
   private memoryManager: MemoryManager;
 
-  constructor(memoryManager: MemoryManager) {
+  constructor(memoryManager: MemoryManager, agentTokenStore?: AgentTokenStore, notesManager?: NotesManager) {
     this.memoryManager = memoryManager;
-    this.server = buildMcpServer(memoryManager);
+    this.server = buildMcpServer(memoryManager, agentTokenStore, notesManager);
   }
 
   async start(): Promise<void> {

@@ -110,7 +110,7 @@ export class NotesManager {
 
     const notes = await Promise.all(
       results.map(async r => {
-        const note = await this.storage.getById(r.payload.note_id as string);
+        const note = await this.storage.getById(r.payload.note_id as string, agentTokenId);
         return note ? { ...note, score: r.score } : null;
       }),
     );
