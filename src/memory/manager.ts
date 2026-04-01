@@ -152,35 +152,117 @@ export class MemoryManager {
 
     const cat = category === 'all' ? undefined : category;
     const filters = { category: cat, domain, status, tags, limit, offset };
+    const isCompact = mode === 'compact';
 
-    if (mode === 'compact') {
-      if (search) {
-        if (this.embeddingProvider?.isReady()) {
-          try {
-            const queryEmbedding = await this.embeddingProvider.embed(search, 'query');
-            return this.storage.hybridSearch(projectId, search, queryEmbedding, { ...filters, compact: true as const });
-          } catch (err) {
-            logger.warn({ err }, 'Hybrid search failed, falling back to FTS');
-          }
-        }
-        return this.storage.search(projectId, search, { ...filters, compact: true as const });
-      }
-      return this.storage.getAll(projectId, { ...filters, compact: true as const });
-    }
-
-    // mode === 'full'
     if (search) {
-      if (this.embeddingProvider?.isReady()) {
+      // Try Qdrant vector search first (when available)
+      if (this.embeddingProvider?.isReady() && this.vectorStore) {
+        try {
+          return await this.qdrantHybridSearch(projectId, search, filters, isCompact);
+        } catch (err) {
+          logger.warn({ err }, 'Qdrant hybrid search failed, falling back');
+        }
+      }
+      // Fallback: pgvector hybrid search (if embedding column still exists)
+      if (this.embeddingProvider?.isReady() && !this.vectorStore) {
         try {
           const queryEmbedding = await this.embeddingProvider.embed(search, 'query');
+          if (isCompact) {
+            return this.storage.hybridSearch(projectId, search, queryEmbedding, { ...filters, compact: true as const });
+          }
           return this.storage.hybridSearch(projectId, search, queryEmbedding, filters);
         } catch (err) {
-          logger.warn({ err }, 'Hybrid search failed, falling back to FTS');
+          logger.warn({ err }, 'pgvector hybrid search failed, falling back to FTS');
         }
+      }
+      // Final fallback: FTS only
+      if (isCompact) {
+        return this.storage.search(projectId, search, { ...filters, compact: true as const });
       }
       return this.storage.search(projectId, search, filters);
     }
+
+    if (isCompact) {
+      return this.storage.getAll(projectId, { ...filters, compact: true as const });
+    }
     return this.storage.getAll(projectId, filters);
+  }
+
+  /** Qdrant-based hybrid search: FTS from PG + vector from Qdrant, merged */
+  private async qdrantHybridSearch(
+    projectId: string,
+    query: string,
+    filters: { category?: string; domain?: string; status?: string; tags?: string[]; limit?: number; offset?: number },
+    compact: boolean,
+  ): Promise<MemoryEntry[] | CompactMemoryEntry[]> {
+    const queryVector = await this.embeddingProvider!.embed(query, 'query');
+
+    // Build Qdrant filter
+    const qdrantFilter: import('../vector/vector-store.js').VectorFilter = {
+      must: [{ key: 'project_id', match: { value: projectId } }],
+    };
+    if (filters.category) qdrantFilter.must!.push({ key: 'category', match: { value: filters.category } });
+    if (filters.status) qdrantFilter.must!.push({ key: 'status', match: { value: filters.status } });
+    if (filters.domain) qdrantFilter.must!.push({ key: 'domain', match: { value: filters.domain } });
+
+    const limit = filters.limit ?? 50;
+
+    // Parallel: FTS from PG + vector from Qdrant
+    const [ftsResults, vectorResults] = await Promise.all([
+      this.storage.search(projectId, query, { ...filters, limit, compact: false }),
+      this.vectorStore!.search('entries', queryVector, qdrantFilter, limit),
+    ]);
+
+    // Merge results by ID, weighted scoring
+    const ftsMap = new Map<string, { entry: MemoryEntry; score: number }>();
+    (ftsResults as MemoryEntry[]).forEach((entry, i) => {
+      ftsMap.set(entry.id, { entry, score: 1 - (i / Math.max(ftsResults.length, 1)) });
+    });
+
+    const vectorMap = new Map<string, number>();
+    vectorResults.forEach(r => {
+      vectorMap.set(r.payload.entry_id as string, r.score);
+    });
+
+    // Combine all unique IDs
+    const allIds = new Set([...ftsMap.keys(), ...vectorMap.keys()]);
+    const scored: Array<{ id: string; entry?: MemoryEntry; score: number }> = [];
+
+    for (const id of allIds) {
+      const ftsScore = ftsMap.get(id)?.score ?? 0;
+      const vecScore = vectorMap.get(id) ?? 0;
+      const combined = 0.4 * ftsScore + 0.6 * vecScore;
+      scored.push({ id, entry: ftsMap.get(id)?.entry, score: combined });
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    const topIds = scored.slice(0, limit);
+
+    // Fetch entries that came from vector search but not FTS
+    const missingIds = topIds.filter(s => !s.entry).map(s => s.id);
+    if (missingIds.length > 0) {
+      const fetched = await this.storage.getByIds(projectId, missingIds);
+      const fetchedMap = new Map(fetched.map(e => [e.id, e]));
+      topIds.forEach(s => { if (!s.entry) s.entry = fetchedMap.get(s.id); });
+    }
+
+    const entries = topIds.filter(s => s.entry).map(s => s.entry!);
+
+    if (compact) {
+      return entries.map(e => ({
+        id: e.id,
+        projectId: e.projectId,
+        title: e.title,
+        category: e.category,
+        domain: e.domain,
+        status: e.status,
+        priority: e.priority,
+        tags: e.tags,
+        pinned: e.pinned,
+        updatedAt: e.updatedAt,
+      }));
+    }
+    return entries;
   }
 
   async write(params: WriteParams): Promise<MemoryEntry> {

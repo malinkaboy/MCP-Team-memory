@@ -1,3 +1,4 @@
+import type { Pool } from 'pg';
 import type { AppConfig } from '../config.js';
 import type { MemoryManager } from '../memory/manager.js';
 import type { VectorStore } from './vector-store.js';
@@ -8,7 +9,7 @@ import logger from '../logger.js';
  * Creates QdrantVectorStore, ensures collections and payload indexes, wires into MemoryManager.
  * Returns the vectorStore if successful, undefined if Qdrant is unavailable.
  */
-export async function setupQdrant(config: AppConfig, memoryManager: MemoryManager): Promise<VectorStore | undefined> {
+export async function setupQdrant(config: AppConfig, memoryManager: MemoryManager, pool?: Pool): Promise<VectorStore | undefined> {
   if (config.vectorStore !== 'qdrant') return undefined;
 
   try {
@@ -44,6 +45,25 @@ export async function setupQdrant(config: AppConfig, memoryManager: MemoryManage
 
     memoryManager.setVectorStore(vectorStore);
     logger.info({ url: config.qdrantUrl }, 'Qdrant vector store connected');
+
+    // Auto-migrate pgvector embeddings to Qdrant (safe to re-run)
+    if (pool) {
+      try {
+        const { rows: [{ exists }] } = await pool.query(`
+          SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'entries' AND column_name = 'embedding'
+          )
+        `);
+        if (exists) {
+          const { migratePgvectorToQdrant } = await import('./migrate-pgvector.js');
+          await migratePgvectorToQdrant(pool, vectorStore, dims);
+        }
+      } catch (err) {
+        logger.warn({ err }, 'pgvector → Qdrant auto-migration skipped');
+      }
+    }
+
     return vectorStore;
   } catch (err) {
     logger.warn({ err }, 'Failed to connect to Qdrant — vector search will use pgvector fallback');

@@ -37,7 +37,7 @@ services:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-memory}:${POSTGRES_PASSWORD:-memory}@postgres:5432/team_memory
       MEMORY_TRANSPORT: http

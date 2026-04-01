@@ -156,7 +156,7 @@ async function main(): Promise<void> {
 
   // Qdrant vector store — shared setup (entries + personal_notes collections)
   const { setupQdrant } = await import('./vector/setup.js');
-  await setupQdrant(config, memoryManager);
+  await setupQdrant(config, memoryManager, storage.getPool());
 
   // Personal Notes manager (optional — requires agent tokens)
   let notesManager: import('./notes/manager.js').NotesManager | undefined;

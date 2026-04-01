@@ -34,10 +34,7 @@ if (config.transport === 'http') {
     const memoryManager = new MemoryManager(storage, auditLogger, versionManager);
     await memoryManager.initialize();
 
-    const mcpServer = new TeamMemoryMCPServer(memoryManager);
-    await mcpServer.start();
-
-    // Embedding provider (optional)
+    // Embedding provider (optional) — must be set before Qdrant and MCP server creation
     if (config.embeddingProvider === 'gemini' && config.geminiApiKey) {
       const { GeminiEmbeddingProvider } = await import('./embedding/gemini.js');
       const embProvider = new GeminiEmbeddingProvider(config.geminiApiKey);
@@ -66,7 +63,33 @@ if (config.transport === 'http') {
 
     // Qdrant vector store — shared setup
     const { setupQdrant } = await import('./vector/setup.js');
-    await setupQdrant(config, memoryManager);
+    await setupQdrant(config, memoryManager, storage.getPool());
+
+    // Agent tokens (optional — enables per-agent identity for notes/sessions)
+    let agentTokenStore: import('./auth/agent-tokens.js').AgentTokenStore | undefined;
+    let notesManager: import('./notes/manager.js').NotesManager | undefined;
+    let sessionManager: import('./sessions/manager.js').SessionManager | undefined;
+    if (config.apiToken) {
+      const { AgentTokenStore } = await import('./auth/agent-tokens.js');
+      agentTokenStore = new AgentTokenStore(storage.getPool());
+      await agentTokenStore.initialize();
+
+      const { PersonalNotesStorage } = await import('./notes/storage.js');
+      const { NotesManager } = await import('./notes/manager.js');
+      const notesStorage = new PersonalNotesStorage(storage.getPool());
+      notesManager = new NotesManager(notesStorage, memoryManager.getVectorStore() ?? undefined, memoryManager.getEmbeddingProvider() ?? undefined);
+
+      const { SessionStorage } = await import('./sessions/storage.js');
+      const { SessionManager } = await import('./sessions/manager.js');
+      const sessionStorage = new SessionStorage(storage.getPool());
+      sessionManager = new SessionManager(sessionStorage, memoryManager.getVectorStore() ?? undefined, memoryManager.getEmbeddingProvider() ?? undefined);
+
+      logger.info('Agent tokens, notes, and sessions managers initialized (stdio)');
+    }
+
+    // Create and start MCP server (after all managers are ready)
+    const mcpServer = new TeamMemoryMCPServer(memoryManager, agentTokenStore, notesManager, sessionManager);
+    await mcpServer.start();
 
     if (config.autoArchiveEnabled) {
       const decayConfig = config.decayThreshold !== undefined
