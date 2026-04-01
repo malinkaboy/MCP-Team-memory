@@ -9,6 +9,16 @@ import logger from '../logger.js';
  */
 const DEFAULT_MODEL = 'nomic-embed-text';
 
+// Ollama default context for nomic-embed-text is ~2048 tokens.
+// Cyrillic chars tokenize as ~2 tokens each. Conservative limit:
+// ~2000 tokens / ~2 tokens/char for Cyrillic = ~1000 Cyrillic chars.
+// Mixed text: use 4000 chars as a safe middle ground.
+const MAX_EMBED_CHARS = 4000;
+
+function truncateForEmbed(text: string): string {
+  return text.length > MAX_EMBED_CHARS ? text.slice(0, MAX_EMBED_CHARS) : text;
+}
+
 export class OllamaEmbeddingProvider implements EmbeddingProvider {
   dimensions = 768;  // default, auto-detected from test embed during initialize()
   readonly modelName: string;
@@ -64,7 +74,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     const res = await fetch(`${this.baseUrl}/api/embed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.modelName, truncate: true, input: prefix + text }),
+      body: JSON.stringify({ model: this.modelName, truncate: true, input: prefix + truncateForEmbed(text) }),
     });
     if (!res.ok) throw new Error(`Ollama embed error ${res.status}: ${await res.text()}`);
     const data = await res.json() as { embeddings: number[][] };
@@ -78,7 +88,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     const res = await fetch(`${this.baseUrl}/api/embed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.modelName, truncate: true, input: texts.map(t => prefix + t) }),
+      body: JSON.stringify({ model: this.modelName, truncate: true, input: texts.map(t => prefix + truncateForEmbed(t)) }),
     });
     if (!res.ok) throw new Error(`Ollama embed error ${res.status}: ${await res.text()}`);
     const data = await res.json() as { embeddings: number[][] };
