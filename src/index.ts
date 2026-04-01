@@ -41,7 +41,6 @@ if (config.transport === 'http') {
       await embProvider.initialize();
       if (embProvider.isReady()) {
         await memoryManager.setEmbeddingProvider(embProvider);
-        memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
       }
     } else if (config.embeddingProvider === 'ollama') {
       const { OllamaEmbeddingProvider } = await import('./embedding/ollama.js');
@@ -49,7 +48,6 @@ if (config.transport === 'http') {
       await embProvider.initialize();
       if (embProvider.isReady()) {
         await memoryManager.setEmbeddingProvider(embProvider);
-        memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
       }
     } else if (config.embeddingProvider === 'local') {
       const { LocalEmbeddingProvider } = await import('./embedding/local.js');
@@ -57,13 +55,17 @@ if (config.transport === 'http') {
       await embProvider.initialize();
       if (embProvider.isReady()) {
         await memoryManager.setEmbeddingProvider(embProvider);
-        memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
       }
     }
 
     // Qdrant vector store — shared setup
     const { setupQdrant } = await import('./vector/setup.js');
     await setupQdrant(config, memoryManager, storage.getPool());
+
+    // Backfill embeddings AFTER Qdrant is set up
+    if (memoryManager.getEmbeddingProvider()?.isReady()) {
+      memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
+    }
 
     // Agent tokens (optional — enables per-agent identity for notes/sessions)
     let agentTokenStore: import('./auth/agent-tokens.js').AgentTokenStore | undefined;

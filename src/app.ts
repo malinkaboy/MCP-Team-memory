@@ -134,7 +134,6 @@ async function main(): Promise<void> {
     await embProvider.initialize();
     if (embProvider.isReady()) {
       await memoryManager.setEmbeddingProvider(embProvider);
-      memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
     }
   } else if (config.embeddingProvider === 'ollama') {
     const { OllamaEmbeddingProvider } = await import('./embedding/ollama.js');
@@ -142,7 +141,6 @@ async function main(): Promise<void> {
     await embProvider.initialize();
     if (embProvider.isReady()) {
       await memoryManager.setEmbeddingProvider(embProvider);
-      memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
     }
   } else if (config.embeddingProvider === 'local') {
     const { LocalEmbeddingProvider } = await import('./embedding/local.js');
@@ -150,13 +148,17 @@ async function main(): Promise<void> {
     await embProvider.initialize();
     if (embProvider.isReady()) {
       await memoryManager.setEmbeddingProvider(embProvider);
-      memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
     }
   }
 
-  // Qdrant vector store — shared setup (entries + personal_notes collections)
+  // Qdrant vector store — shared setup (entries + personal_notes + sessions collections)
   const { setupQdrant } = await import('./vector/setup.js');
   await setupQdrant(config, memoryManager, storage.getPool());
+
+  // Backfill embeddings AFTER Qdrant is set up (so Qdrant-based backfill works)
+  if (memoryManager.getEmbeddingProvider()?.isReady()) {
+    memoryManager.backfillEmbeddings().catch(err => logger.error({ err }, 'Embedding backfill failed'));
+  }
 
   // Personal Notes manager (optional — requires agent tokens)
   let notesManager: import('./notes/manager.js').NotesManager | undefined;

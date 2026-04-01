@@ -615,75 +615,39 @@ export class MemoryManager {
    * Used when pgvector embedding column has been dropped (migration 011).
    * Safe to re-run — Qdrant upserts are idempotent.
    */
+  /**
+   * Qdrant-only backfill: reads ALL entries from PG, embeds one-by-one, upserts to Qdrant.
+   * Used when pgvector embedding column has been dropped (migration 011).
+   * Sequential processing ensures long entries don't crash the batch.
+   * Safe to re-run — Qdrant upserts are idempotent.
+   */
   private async backfillQdrant(batchSize: number = 100): Promise<number> {
     if (!this.embeddingProvider?.isReady() || !this.vectorStore) return 0;
 
-    // Get total count to know if there is work to do
-    const stats = await this.storage.countEmbeddingStats();
-    if (stats.total === 0) return 0;
-
-    // Check how many vectors are already in Qdrant
-    const qdrantInfo = await this.vectorStore.collectionExists('entries');
-    if (!qdrantInfo) return 0;
-
     const provider = this.embeddingProvider;
     let totalCount = 0;
-    let offset = 0;
+    let failed = 0;
 
-    while (offset < stats.total) {
-      // Get batch of entries from PG (all entries, no embedding filter)
-      const entries = await this.storage.getAll(DEFAULT_PROJECT_ID, {
-        limit: batchSize,
-        offset,
-        compact: false,
-      }) as MemoryEntry[];
+    // Gather entries from ALL projects
+    const allProjects = await this.storage.listProjects();
+    const projectIds = [DEFAULT_PROJECT_ID, ...allProjects.map(p => p.id).filter(id => id !== DEFAULT_PROJECT_ID)];
 
-      // Also get entries from other projects
-      const allProjects = await this.storage.listProjects();
-      for (const project of allProjects) {
-        if (project.id !== DEFAULT_PROJECT_ID) {
-          const projectEntries = await this.storage.getAll(project.id, {
-            limit: batchSize,
-            offset: 0,
-            compact: false,
-          }) as MemoryEntry[];
-          entries.push(...projectEntries);
-        }
-      }
+    for (const projectId of projectIds) {
+      let offset = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const entries = await this.storage.getAll(projectId, {
+          limit: batchSize,
+          offset,
+          compact: false,
+        }) as MemoryEntry[];
 
-      if (entries.length === 0) break;
+        if (entries.length === 0) break;
 
-      let batchCount = 0;
-
-      if (provider.embedBatch) {
-        for (let i = 0; i < entries.length; i += MemoryManager.BATCH_CHUNK_SIZE) {
-          const chunk = entries.slice(i, i + MemoryManager.BATCH_CHUNK_SIZE);
-          try {
-            const texts = chunk.map(e => `${e.title} ${e.content}`);
-            const embeddings = await provider.embedBatch(texts, 'document');
-            const points = chunk.map((entry, j) => ({
-              id: entry.id,
-              vector: embeddings[j],
-              payload: {
-                entry_id: entry.id,
-                project_id: entry.projectId,
-                category: entry.category,
-                domain: entry.domain ?? '',
-                status: entry.status,
-                tags: entry.tags,
-                author: entry.author,
-              },
-            }));
-            await this.vectorStore!.upsertBatch('entries', points);
-            batchCount += chunk.length;
-          } catch (err) {
-            logger.error({ err, chunkSize: chunk.length }, 'Qdrant backfill batch failed');
-          }
-        }
-      } else {
         for (const entry of entries) {
           try {
-            const embedding = await provider.embed(`${entry.title} ${entry.content}`, 'document');
+            const text = `${entry.title} ${entry.content}`;
+            const embedding = await provider.embed(text, 'document');
             await this.vectorStore!.upsert('entries', entry.id, embedding, {
               entry_id: entry.id,
               project_id: entry.projectId,
@@ -693,25 +657,20 @@ export class MemoryManager {
               tags: entry.tags,
               author: entry.author,
             });
-            batchCount++;
+            totalCount++;
           } catch (err) {
-            logger.error({ err, entryId: entry.id }, 'Qdrant backfill entry failed');
+            failed++;
+            logger.warn({ err, entryId: entry.id }, 'Qdrant backfill: skipped entry');
           }
         }
+
+        logger.info({ totalCount, failed, projectId, offset }, 'Qdrant backfill progress');
+        offset += entries.length;
       }
-
-      totalCount += batchCount;
-      logger.info({ batchCount, totalCount, offset }, 'Qdrant backfill batch completed');
-
-      if (batchCount === 0) break;  // avoid infinite loop on persistent failure
-      offset += entries.length;
-
-      // If we got entries from multiple projects, we've already processed everything
-      if (allProjects.length > 0) break;
     }
 
     if (totalCount > 0) {
-      logger.info({ totalCount }, 'Qdrant backfill complete');
+      logger.info({ totalCount, failed }, 'Qdrant backfill complete');
     }
     return totalCount;
   }
