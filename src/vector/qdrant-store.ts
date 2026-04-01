@@ -61,10 +61,16 @@ export class QdrantVectorStore implements VectorStore {
     const BATCH_SIZE = 500;
     for (let i = 0; i < points.length; i += BATCH_SIZE) {
       const batch = points.slice(i, i + BATCH_SIZE);
-      await this.client.upsert(collection, {
-        wait: true,
-        points: batch.map(p => ({ id: p.id, vector: p.vector, payload: p.payload })),
-      });
+      try {
+        await this.client.upsert(collection, {
+          wait: true,
+          points: batch.map(p => ({ id: p.id, vector: p.vector, payload: p.payload })),
+        });
+      } catch (err) {
+        logger.error({ collection, batchIndex: Math.floor(i / BATCH_SIZE), totalPoints: points.length, err },
+          'Qdrant batch upsert failed');
+        throw err;
+      }
     }
   }
 

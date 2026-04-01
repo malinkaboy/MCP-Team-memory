@@ -48,7 +48,7 @@ if (config.transport === 'http') {
       }
     } else if (config.embeddingProvider === 'ollama') {
       const { OllamaEmbeddingProvider } = await import('./embedding/ollama.js');
-      const embProvider = new OllamaEmbeddingProvider(config.ollamaUrl);
+      const embProvider = new OllamaEmbeddingProvider(config.ollamaUrl, config.ollamaEmbeddingModel);
       await embProvider.initialize();
       if (embProvider.isReady()) {
         await memoryManager.setEmbeddingProvider(embProvider);

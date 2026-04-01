@@ -119,6 +119,24 @@ describe('QdrantVectorStore', () => {
 
       expect(mockClient.upsert).not.toHaveBeenCalled();
     });
+
+    it('splits into multiple batches when > 500 points', async () => {
+      mockClient.upsert.mockResolvedValue(true);
+      const points = Array.from({ length: 501 }, (_, i) => ({
+        id: `id-${i}`,
+        vector: [0.1],
+        payload: {},
+      }));
+
+      await store.upsertBatch('test', points);
+
+      // 501 points / 500 batch size = 2 upsert calls
+      expect(mockClient.upsert).toHaveBeenCalledTimes(2);
+      // First batch: 500 points
+      expect(mockClient.upsert.mock.calls[0][1].points).toHaveLength(500);
+      // Second batch: 1 point
+      expect(mockClient.upsert.mock.calls[1][1].points).toHaveLength(1);
+    });
   });
 
   describe('search', () => {
