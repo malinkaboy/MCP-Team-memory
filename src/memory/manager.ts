@@ -5,6 +5,7 @@ import { VersionManager } from '../storage/versioning.js';
 import { DEFAULT_PROJECT_ID } from './types.js';
 import logger from '../logger.js';
 import type { EmbeddingProvider } from '../embedding/provider.js';
+import type { VectorStore } from '../vector/vector-store.js';
 import type {
   MemoryEntry,
   CompactMemoryEntry,
@@ -30,6 +31,7 @@ export class MemoryManager {
   private auditLogger: AuditLogger | null = null;
   private versionManager: VersionManager | null = null;
   private embeddingProvider: EmbeddingProvider | null = null;
+  private vectorStore: VectorStore | null = null;
   private listeners: Set<EventListener> = new Set();
   private autoArchiveInterval: NodeJS.Timeout | null = null;
 
@@ -44,9 +46,18 @@ export class MemoryManager {
     logger.info('Memory Manager initialized');
   }
 
+  setVectorStore(store: VectorStore): void {
+    this.vectorStore = store;
+  }
+
+  getVectorStore(): VectorStore | null {
+    return this.vectorStore;
+  }
+
   async close(): Promise<void> {
     this.stopAutoArchive();
     await this.embeddingProvider?.close?.();
+    await this.vectorStore?.close();
     await this.storage.close();
   }
 
@@ -203,11 +214,25 @@ export class MemoryManager {
     }).catch(err => logger.error({ err }, 'Audit log failed'));
 
     // Fire-and-forget: generate embedding for new entry
-    // Fire-and-forget: embeddings are eventually consistent.
-    // If server crashes before completion, backfill recovers missing embeddings on next startup.
+    // Embeddings are eventually consistent. Backfill recovers missing embeddings on next startup.
     if (this.embeddingProvider?.isReady()) {
       this.embeddingProvider.embed(`${created.title} ${created.content}`, 'document')
-        .then(emb => this.storage.saveEmbedding(created.id, emb))
+        .then(async (emb) => {
+          // Upsert to Qdrant if available
+          if (this.vectorStore) {
+            await this.vectorStore.upsert('entries', created.id, emb, {
+              entry_id: created.id,
+              project_id: created.projectId,
+              category: created.category,
+              domain: created.domain ?? '',
+              status: created.status,
+              tags: created.tags,
+              author: created.author,
+            });
+          }
+          // Also save to pgvector for backward compat during migration period
+          await this.storage.saveEmbedding(created.id, emb);
+        })
         .catch(err => logger.error({ err, entryId: created.id }, 'Embedding generation failed'));
     }
 
@@ -259,7 +284,20 @@ export class MemoryManager {
       // Fire-and-forget: regenerate embedding if content or title changed
       if (this.embeddingProvider?.isReady() && (params.title || params.content)) {
         this.embeddingProvider.embed(`${updated.title} ${updated.content}`, 'document')
-          .then(emb => this.storage.saveEmbedding(updated.id, emb))
+          .then(async (emb) => {
+            if (this.vectorStore) {
+              await this.vectorStore.upsert('entries', updated.id, emb, {
+                entry_id: updated.id,
+                project_id: updated.projectId,
+                category: updated.category,
+                domain: updated.domain ?? '',
+                status: updated.status,
+                tags: updated.tags,
+                author: updated.author,
+              });
+            }
+            await this.storage.saveEmbedding(updated.id, emb);
+          })
           .catch(err => logger.error({ err, entryId: updated.id }, 'Embedding regeneration failed'));
       }
 
@@ -298,6 +336,13 @@ export class MemoryManager {
         action: 'delete',
         actor: existing?.author || 'system',
       }).catch(err => logger.error({ err }, 'Audit log failed'));
+
+      // Clean up vector from Qdrant
+      if (this.vectorStore) {
+        this.vectorStore.delete('entries', [id])
+          .catch(err => logger.warn({ err, entryId: id }, 'Failed to delete vector from Qdrant'));
+      }
+
       return true;
     }
     return false;
