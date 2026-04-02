@@ -83,13 +83,26 @@ export class PersonalNotesStorage {
       conditions.push(`project_id = $${idx++}`);
       params.push(filters.projectId);
     }
+    if (filters.sessionId) {
+      conditions.push(`session_id = $${idx++}`);
+      params.push(filters.sessionId);
+    }
+    if (filters.status) {
+      conditions.push(`status = $${idx++}`);
+      params.push(filters.status);
+    }
+    if (filters.tags && filters.tags.length > 0) {
+      conditions.push(`tags && $${idx++}`);
+      params.push(filters.tags);
+    }
 
     const where = conditions.join(' AND ');
     const limit = filters.limit ?? 50;
+    const offset = filters.offset ?? 0;
 
     const { rows } = await this.pool.query(
-      `SELECT * FROM personal_notes WHERE ${where} ORDER BY updated_at DESC LIMIT $${idx++}`,
-      [...params, limit],
+      `SELECT * FROM personal_notes WHERE ${where} ORDER BY updated_at DESC LIMIT $${idx++} OFFSET $${idx++}`,
+      [...params, limit, offset],
     );
 
     return rows.map(r => this.rowToNote(r));
