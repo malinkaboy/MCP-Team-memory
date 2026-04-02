@@ -97,11 +97,19 @@ CREATE TRIGGER trg_session_messages_search
   BEFORE INSERT OR UPDATE OF content ON session_messages
   FOR EACH ROW EXECUTE FUNCTION update_session_messages_search_vector();
 
--- Timestamp trigger for sessions
+-- Timestamp trigger for sessions (separate function — sessions lacks entries-specific columns)
+CREATE OR REPLACE FUNCTION update_sessions_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 DROP TRIGGER IF EXISTS update_sessions_timestamp ON sessions;
 CREATE TRIGGER update_sessions_timestamp
   BEFORE UPDATE ON sessions
-  FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+  FOR EACH ROW EXECUTE FUNCTION update_sessions_timestamp();
 
 -- Add FK from personal_notes.session_id now that sessions table exists
 DO $$
