@@ -56,7 +56,7 @@ export function loadConfig(): AppConfig {
     embeddingModelDir: process.env.MEMORY_EMBEDDING_MODEL_DIR || 'data/models',
     geminiApiKey: process.env.GEMINI_API_KEY || undefined,
     ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
-    ollamaEmbeddingModel: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
+    ollamaEmbeddingModel: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text-v2-moe',
     vectorStore: (process.env.VECTOR_STORE as 'qdrant' | 'pgvector') || 'pgvector',
     qdrantUrl: process.env.QDRANT_URL || 'http://localhost:6333',
     qdrantApiKey: process.env.QDRANT_API_KEY || undefined,

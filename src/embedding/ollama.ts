@@ -2,18 +2,18 @@ import type { EmbeddingProvider, EmbedTaskType } from './provider.js';
 import logger from '../logger.js';
 
 /**
- * Ollama embedding provider using nomic-embed-text model.
- * 768 dimensions, excellent multilingual (Russian/English) support.
+ * Ollama embedding provider using nomic-embed-text-v2-moe model.
+ * 768 dimensions, 100+ languages (excellent Russian/English), 8192 token context.
  * Requires Ollama running locally: curl -fsSL https://ollama.com/install.sh | sh
  * Model pulled automatically on first use.
  */
-const DEFAULT_MODEL = 'nomic-embed-text';
+const DEFAULT_MODEL = 'nomic-embed-text-v2-moe';
 
-// Ollama default context for nomic-embed-text is ~2048 tokens.
-// Cyrillic chars tokenize as ~2 tokens each. Conservative limit:
-// ~2000 tokens / ~2 tokens/char for Cyrillic = ~1000 Cyrillic chars.
-// Mixed text: use 4000 chars as a safe middle ground.
-const MAX_EMBED_CHARS = 4000;
+// nomic-embed-text-v2-moe supports 8192 tokens context.
+// Cyrillic chars tokenize as ~2 tokens each.
+// Safe limit: ~8000 tokens / ~2 tokens/char = ~4000 Cyrillic chars.
+// Mixed text (code + Cyrillic): use 6000 chars as a balanced limit.
+const MAX_EMBED_CHARS = 6000;
 
 function truncateForEmbed(text: string): string {
   return text.length > MAX_EMBED_CHARS ? text.slice(0, MAX_EMBED_CHARS) : text;
