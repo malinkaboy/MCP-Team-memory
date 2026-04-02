@@ -49,12 +49,27 @@ describe('QdrantVectorStore', () => {
       });
     });
 
-    it('skips creation when collection exists', async () => {
+    it('skips creation when collection exists with matching dimensions', async () => {
       mockClient.collectionExists.mockResolvedValue({ exists: true });
+      mockClient.getCollection.mockResolvedValue({ config: { params: { vectors: { size: 768 } } } });
 
       await store.ensureCollection('test', 768);
 
       expect(mockClient.createCollection).not.toHaveBeenCalled();
+    });
+
+    it('recreates collection when dimensions mismatch', async () => {
+      mockClient.collectionExists.mockResolvedValue({ exists: true });
+      mockClient.getCollection.mockResolvedValue({ config: { params: { vectors: { size: 384 } } } });
+      mockClient.deleteCollection = vi.fn().mockResolvedValue(true);
+      mockClient.createCollection.mockResolvedValue(true);
+
+      await store.ensureCollection('test', 768);
+
+      expect(mockClient.deleteCollection).toHaveBeenCalledWith('test');
+      expect(mockClient.createCollection).toHaveBeenCalledWith('test', expect.objectContaining({
+        vectors: { size: 768, distance: 'Cosine' },
+      }));
     });
 
     it('applies scalar quantization when requested', async () => {
