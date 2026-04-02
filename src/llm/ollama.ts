@@ -98,5 +98,34 @@ Summary:`;
     return this.generate(prompt, { temperature: 0.2, maxTokens: 300 });
   }
 
+  async chat(messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, options?: LlmGenerateOptions): Promise<string> {
+    if (!this.ready) throw new Error('LLM client not initialized');
+
+    // Truncate each message to prevent context overflow
+    const truncated = messages.map(m => ({
+      role: m.role,
+      content: m.content.length > 10_000 ? m.content.slice(0, 10_000) + '...[truncated]' : m.content,
+    }));
+
+    const res = await fetch(`${this.baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: this.modelName,
+        messages: truncated,
+        stream: false,
+        options: {
+          temperature: options?.temperature ?? 0.7,
+          num_predict: options?.maxTokens ?? 2048,
+        },
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+
+    if (!res.ok) throw new Error(`Ollama chat error ${res.status}: ${await res.text()}`);
+    const data = await res.json() as { message: { content: string } };
+    return data.message.content.trim();
+  }
+
   async close(): Promise<void> { this.ready = false; }
 }

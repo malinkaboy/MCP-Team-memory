@@ -89,6 +89,11 @@
           <i data-lucide="users" class="nav-icon"></i>
           <span>Агенты</span>
         </button>
+        <button class="nav-item nav-item-chat" id="btn-ai-chat">
+          <i data-lucide="message-circle" class="nav-icon"></i>
+          <span class="intellectika-brand">Intellectika</span>
+          <span class="intellectika-ai">AI</span>
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -552,7 +557,41 @@
     </div>
   </div>
 
+  <!-- AI Chat Panel -->
+  <div class="chat-overlay" id="chat-overlay" style="display:none">
+    <div class="chat-panel">
+      <div class="chat-header">
+        <div class="chat-header-left">
+          <span class="intellectika-brand" style="font-size:16px">Intellectika</span>
+          <span class="intellectika-ai" style="font-size:16px">AI Chat</span>
+          <span class="chat-model-badge" id="chat-model-badge"></span>
+        </div>
+        <div class="chat-header-actions">
+          <button class="btn-icon" id="chat-clear" data-tooltip="Очистить историю">
+            <i data-lucide="trash-2"></i>
+          </button>
+          <button class="btn-icon" id="chat-close" data-tooltip="Закрыть">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-welcome">
+          <i data-lucide="sparkles" class="chat-welcome-icon"></i>
+          <p>Привет! Я AI-ассистент на базе Gemma 4. Задавайте любые вопросы.</p>
+        </div>
+      </div>
+      <div class="chat-input-wrap">
+        <textarea class="chat-input" id="chat-input" placeholder="Введите сообщение..." rows="1"></textarea>
+        <button class="chat-send-btn" id="chat-send" title="Отправить">
+          <i data-lucide="send"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js?v=4"></script>
   <script src="graph.js?v=6"></script>
+  <script src="chat.js?v=1"></script>
 </body>
 </html>

@@ -169,6 +169,81 @@ async function main(): Promise<void> {
     logger.info('Session manager initialized');
   }
 
+  // AI Chat endpoint
+  const MAX_CHAT_SESSIONS = 100;
+  const CHAT_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+  type ChatMessage = { role: 'user' | 'assistant' | 'system'; content: string };
+  const chatSessions = new Map<string, { messages: ChatMessage[]; lastActive: number }>();
+
+  function evictStaleSessions() {
+    const now = Date.now();
+    for (const [id, session] of chatSessions) {
+      if (now - session.lastActive > CHAT_SESSION_TTL_MS) chatSessions.delete(id);
+    }
+    // Hard cap: evict oldest if still over limit
+    if (chatSessions.size > MAX_CHAT_SESSIONS) {
+      const sorted = [...chatSessions.entries()].sort((a, b) => a[1].lastActive - b[1].lastActive);
+      for (let i = 0; i < sorted.length - MAX_CHAT_SESSIONS; i++) chatSessions.delete(sorted[i][0]);
+    }
+  }
+
+  app.post('/api/chat', async (req, res) => {
+    if (!llmClient?.isReady()) {
+      res.status(503).json({ error: 'LLM not available' });
+      return;
+    }
+    const { message, session_id } = req.body;
+    if (!message || typeof message !== 'string') {
+      res.status(400).json({ error: 'message is required' });
+      return;
+    }
+    if (message.length > 10_000) {
+      res.status(400).json({ error: 'Message too long (max 10,000 characters)' });
+      return;
+    }
+
+    evictStaleSessions();
+
+    const chatId = session_id || 'default';
+    if (!chatSessions.has(chatId)) {
+      chatSessions.set(chatId, {
+        messages: [{ role: 'system', content: 'You are a helpful AI assistant. Respond in the same language as the user. Be concise and helpful.' }],
+        lastActive: Date.now(),
+      });
+    }
+    const session = chatSessions.get(chatId)!;
+    session.lastActive = Date.now();
+    session.messages.push({ role: 'user', content: message });
+
+    // Rolling window: keep system prompt + last 30 messages
+    if (session.messages.length > 31) {
+      const system = session.messages[0];
+      session.messages = [system, ...session.messages.slice(-30)];
+    }
+
+    try {
+      const reply = await llmClient.chat(session.messages);
+      session.messages.push({ role: 'assistant', content: reply });
+      res.json({ reply, model: llmClient.modelName });
+    } catch (err) {
+      logger.error({ err }, 'Chat generation failed');
+      res.status(500).json({ error: 'Generation failed' });
+    }
+  });
+
+  app.get('/api/chat/status', (_req, res) => {
+    res.json({
+      available: !!llmClient?.isReady(),
+      model: llmClient?.modelName ?? null,
+    });
+  });
+
+  app.delete('/api/chat', (req, res) => {
+    const chatId = req.body?.session_id || (req.query.session_id as string) || 'default';
+    chatSessions.delete(chatId);
+    res.json({ ok: true });
+  });
+
   // Mount MCP transport (after all optional managers are created)
   mountMcpTransport(app, () => buildMcpServer(memoryManager, agentTokenStore, notesManager, sessionManager));
 
