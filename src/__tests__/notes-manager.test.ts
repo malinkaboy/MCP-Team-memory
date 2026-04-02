@@ -34,6 +34,7 @@ function createMockVectorStore() {
     deleteByFilter: vi.fn().mockResolvedValue(undefined),
     setPayload: vi.fn().mockResolvedValue(undefined),
     createPayloadIndex: vi.fn().mockResolvedValue(undefined),
+    getPointCount: vi.fn().mockResolvedValue(0),
     collectionExists: vi.fn().mockResolvedValue(true),
     close: vi.fn().mockResolvedValue(undefined),
   };

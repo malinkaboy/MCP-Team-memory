@@ -7,6 +7,7 @@ vi.mock('../logger.js', () => ({
 
 // Mock @qdrant/js-client-rest
 const mockClient = {
+  getCollection: vi.fn(),
   collectionExists: vi.fn(),
   createCollection: vi.fn(),
   createPayloadIndex: vi.fn(),

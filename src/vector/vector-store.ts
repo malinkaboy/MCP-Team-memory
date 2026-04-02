@@ -61,6 +61,9 @@ export interface VectorStore {
   /** Create payload index for fast filtered search */
   createPayloadIndex(collection: string, field: string, schema: 'keyword' | 'integer' | 'bool'): Promise<void>;
 
+  /** Get point count in a collection (-1 if unavailable) */
+  getPointCount(collection: string): Promise<number>;
+
   /** Check if collection exists */
   collectionExists(name: string): Promise<boolean>;
 

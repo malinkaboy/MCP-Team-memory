@@ -116,6 +116,15 @@ export class QdrantVectorStore implements VectorStore {
     });
   }
 
+  async getPointCount(collection: string): Promise<number> {
+    try {
+      const info = await this.client.getCollection(collection);
+      return info.points_count ?? -1;
+    } catch {
+      return -1;
+    }
+  }
+
   async collectionExists(name: string): Promise<boolean> {
     const { exists } = await this.client.collectionExists(name);
     return exists;

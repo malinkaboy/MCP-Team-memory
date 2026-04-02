@@ -504,16 +504,26 @@ export class MemoryManager {
     dimensions: number | null;
     entriesEmbedded: number;
     entriesTotal: number;
+    vectorStore: string | null;
   }> {
     const p = this.embeddingProvider;
     const embStats = await this.storage.countEmbeddingStats();
+
+    // When using Qdrant and pgvector column is gone, get embedded count from Qdrant
+    let entriesEmbedded = embStats.embedded;
+    if (this.vectorStore && entriesEmbedded === 0 && embStats.total > 0) {
+      const qdrantCount = await this.vectorStore.getPointCount('entries');
+      if (qdrantCount > 0) entriesEmbedded = qdrantCount;
+    }
+
     return {
       provider: p?.providerType ?? null,
       model: p?.modelName ?? null,
       isReady: p?.isReady() ?? false,
       dimensions: p?.dimensions ?? null,
-      entriesEmbedded: embStats.embedded,
+      entriesEmbedded,
       entriesTotal: embStats.total,
+      vectorStore: this.vectorStore ? 'qdrant' : 'pgvector',
     };
   }
 
