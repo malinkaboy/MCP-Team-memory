@@ -54,7 +54,7 @@ export function buildMcpServer(
   sessionManager?: SessionManager,
 ): Server {
   const server = new Server(
-    { name: 'team-memory', version: '2.0.0' },
+    { name: 'team-memory', version: '3.0.0' },
     { capabilities: { tools: {}, resources: {}, prompts: {} } }
   );
 

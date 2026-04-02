@@ -1,6 +1,6 @@
 {
   "name": "@antony-A-tech/team-memory-mcp",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "description": "MCP Server for team memory - shared knowledge base for Claude Code agents (PostgreSQL, multi-project)",
   "type": "module",
   "main": "dist/index.js",
