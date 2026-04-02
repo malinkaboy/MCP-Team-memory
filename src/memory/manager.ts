@@ -439,10 +439,13 @@ export class MemoryManager {
         actor: existing?.author || 'system',
       }).catch(err => logger.error({ err }, 'Audit log failed'));
 
-      // Clean up vector from Qdrant
+      // Clean up vector from Qdrant (awaited — ensures consistency)
       if (this.vectorStore) {
-        this.vectorStore.delete('entries', [id])
-          .catch(err => logger.warn({ err, entryId: id }, 'Failed to delete vector from Qdrant'));
+        try {
+          await this.vectorStore.delete('entries', [id]);
+        } catch (err) {
+          logger.warn({ err, entryId: id }, 'Failed to delete vector from Qdrant');
+        }
       }
 
       return true;
