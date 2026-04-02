@@ -34,7 +34,7 @@
   }
 
   function getAuthHeaders() {
-    const token = localStorage.getItem('tm_token');
+    const token = new URLSearchParams(window.location.search).get('token') || localStorage.getItem('auth-token') || '';
     const h = { 'Content-Type': 'application/json' };
     if (token) h['Authorization'] = 'Bearer ' + token;
     return h;
