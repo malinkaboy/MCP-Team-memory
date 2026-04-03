@@ -42,8 +42,9 @@ describe('OllamaLlmClient', () => {
     const prompt = generateSpy.mock.calls[0][0];
     expect(prompt).toContain('[user]');
     expect(prompt).toContain('[assistant]');
-    // Messages should be truncated to 500 chars each
+    // Messages should be truncated to 300 chars each
     expect(prompt).not.toContain('A'.repeat(1000));
-    expect(prompt.indexOf('A'.repeat(500))).toBeGreaterThan(-1);
+    expect(prompt.indexOf('A'.repeat(300))).toBeGreaterThan(-1);
+    expect(prompt).toContain('/no_think');
   });
 });

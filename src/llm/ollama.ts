@@ -1,12 +1,19 @@
 import logger from '../logger.js';
 
 /**
- * Ollama LLM client for text generation (summarization, etc.)
- * Uses /api/generate endpoint — separate from embedding (/api/embed).
+ * Ollama LLM client for text generation (summarization, chat).
+ * Uses /api/generate and /api/chat endpoints — separate from embedding (/api/embed).
+ *
+ * Performance baseline (qwen3.5:4b on 4-core Xeon CPU, no GPU):
+ *   ~3.6 tok/s → 50 tokens in ~14s, 200 tokens in ~55s, 500 tokens in ~2.5min
  */
 
 const DEFAULT_MODEL = 'qwen3.5:4b';
-const MAX_INPUT_CHARS = 50_000; // ~12K tokens, safe for 256K context models
+
+// Input truncation: 262K context ≈ 500K chars, but we stay conservative
+// to keep inference fast. Summarization doesn't need the full session.
+const MAX_GENERATE_INPUT_CHARS = 30_000;  // ~7K tokens — keeps prompt processing fast
+const MAX_CHAT_MESSAGE_CHARS = 3_000;     // per-message truncation for chat history
 
 export interface LlmGenerateOptions {
   temperature?: number;
@@ -47,7 +54,7 @@ export class OllamaLlmClient {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: this.modelName, prompt: 'Hi', stream: false, options: { num_predict: 1 } }),
-        signal: AbortSignal.timeout(300_000), // 5 min — gemma4:26b cold start loads ~16GB into RAM
+        signal: AbortSignal.timeout(300_000), // 5 min — cold start loads model into RAM
       });
       if (!testRes.ok) throw new Error(`Test generate failed: ${testRes.status}`);
       this.ready = true;
@@ -61,7 +68,9 @@ export class OllamaLlmClient {
   async generate(prompt: string, options?: LlmGenerateOptions): Promise<string> {
     if (!this.ready) throw new Error('LLM client not initialized');
 
-    const truncated = prompt.length > MAX_INPUT_CHARS ? prompt.slice(0, MAX_INPUT_CHARS) + '\n...[truncated]' : prompt;
+    const truncated = prompt.length > MAX_GENERATE_INPUT_CHARS
+      ? prompt.slice(0, MAX_GENERATE_INPUT_CHARS) + '\n...[truncated]'
+      : prompt;
 
     const res = await fetch(`${this.baseUrl}/api/generate`, {
       method: 'POST',
@@ -72,10 +81,10 @@ export class OllamaLlmClient {
         stream: false,
         options: {
           temperature: options?.temperature ?? 0.3,
-          num_predict: options?.maxTokens ?? 500,
+          num_predict: options?.maxTokens ?? 300,
         },
       }),
-      signal: AbortSignal.timeout(300_000), // 5 min — summarization can be slow on CPU
+      signal: AbortSignal.timeout(300_000), // 5 min
     });
 
     if (!res.ok) throw new Error(`Ollama generate error ${res.status}: ${await res.text()}`);
@@ -83,28 +92,48 @@ export class OllamaLlmClient {
     return data.response.trim();
   }
 
+  /**
+   * Summarize a session. For large sessions (100+ messages), samples
+   * first/last messages + every Nth to stay within input limits.
+   */
   async summarizeSession(messages: Array<{ role: string; content: string }>): Promise<string> {
-    const conversation = messages
-      .map(m => `[${m.role}]: ${m.content.slice(0, 500)}`)
-      .join('\n\n');
+    let sampled: Array<{ role: string; content: string }>;
 
-    const prompt = `Summarize this development session in 3-5 sentences. Focus on: what was built/changed, key decisions made, and the outcome. Write in the same language as the conversation.
+    if (messages.length <= 40) {
+      sampled = messages;
+    } else {
+      // Sample: first 10 + every Nth from middle + last 10
+      const first = messages.slice(0, 10);
+      const last = messages.slice(-10);
+      const middle = messages.slice(10, -10);
+      const step = Math.ceil(middle.length / 20);
+      const middleSampled = middle.filter((_, i) => i % step === 0);
+      sampled = [...first, ...middleSampled, ...last];
+    }
 
-Session transcript:
+    const conversation = sampled
+      .map(m => `[${m.role}]: ${m.content.slice(0, 300)}`)
+      .join('\n');
+
+    const prompt = `/no_think
+Summarize this development session in 3-5 sentences. Focus on: what was built/changed, key decisions made, and the outcome. Write in the same language as the conversation.
+
+Session transcript (${messages.length} messages total):
 ${conversation}
 
 Summary:`;
 
-    return this.generate(prompt, { temperature: 0.2, maxTokens: 300 });
+    return this.generate(prompt, { temperature: 0.2, maxTokens: 200 });
   }
 
   async chat(messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, options?: LlmGenerateOptions): Promise<string> {
     if (!this.ready) throw new Error('LLM client not initialized');
 
-    // Truncate each message to prevent context overflow
     const truncated = messages.map(m => ({
       role: m.role,
-      content: m.content.length > 10_000 ? m.content.slice(0, 10_000) + '...[truncated]' : m.content,
+      content: m.content.length > MAX_CHAT_MESSAGE_CHARS
+        ? m.content.slice(0, MAX_CHAT_MESSAGE_CHARS) + '...[truncated]'
+        : m.content,
     }));
 
     const res = await fetch(`${this.baseUrl}/api/chat`, {
@@ -116,7 +145,7 @@ Summary:`;
         stream: false,
         options: {
           temperature: options?.temperature ?? 0.7,
-          num_predict: options?.maxTokens ?? 2048,
+          num_predict: options?.maxTokens ?? 500, // ~2.5 min at 3.6 tok/s
         },
       }),
       signal: AbortSignal.timeout(300_000), // 5 min

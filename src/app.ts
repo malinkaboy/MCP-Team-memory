@@ -207,7 +207,7 @@ async function main(): Promise<void> {
     const chatId = session_id || 'default';
     if (!chatSessions.has(chatId)) {
       chatSessions.set(chatId, {
-        messages: [{ role: 'system', content: 'You are a helpful AI assistant. Respond in the same language as the user. Be concise and helpful.' }],
+        messages: [{ role: 'system', content: '/no_think\nYou are a helpful AI assistant. Respond in the same language as the user. Be concise — keep answers under 300 words.' }],
         lastActive: Date.now(),
       });
     }
