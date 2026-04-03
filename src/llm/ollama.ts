@@ -79,6 +79,7 @@ export class OllamaLlmClient {
         model: this.modelName,
         prompt: truncated,
         stream: false,
+        think: false,
         options: {
           temperature: options?.temperature ?? 0.3,
           num_predict: options?.maxTokens ?? 300,
@@ -115,8 +116,7 @@ export class OllamaLlmClient {
       .map(m => `[${m.role}]: ${m.content.slice(0, 300)}`)
       .join('\n');
 
-    const prompt = `/no_think
-Summarize this development session in 3-5 sentences. Focus on: what was built/changed, key decisions made, and the outcome. Write in the same language as the conversation.
+    const prompt = `Summarize this development session in 3-5 sentences. Focus on: what was built/changed, key decisions made, and the outcome. Write in the same language as the conversation.
 
 Session transcript (${messages.length} messages total):
 ${conversation}
@@ -143,6 +143,7 @@ Summary:`;
         model: this.modelName,
         messages: truncated,
         stream: false,
+        think: false,
         options: {
           temperature: options?.temperature ?? 0.7,
           num_predict: options?.maxTokens ?? 500, // ~2.5 min at 3.6 tok/s
