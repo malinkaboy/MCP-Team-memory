@@ -5,7 +5,7 @@ import logger from '../logger.js';
  * Uses /api/generate endpoint — separate from embedding (/api/embed).
  */
 
-const DEFAULT_MODEL = 'gemma4:26b';
+const DEFAULT_MODEL = 'qwen3.5:4b';
 const MAX_INPUT_CHARS = 50_000; // ~12K tokens, safe for 256K context models
 
 export interface LlmGenerateOptions {
@@ -47,7 +47,7 @@ export class OllamaLlmClient {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: this.modelName, prompt: 'Hi', stream: false, options: { num_predict: 1 } }),
-        signal: AbortSignal.timeout(120_000), // gemma4:26b cold start loads ~16GB into RAM
+        signal: AbortSignal.timeout(300_000), // 5 min — gemma4:26b cold start loads ~16GB into RAM
       });
       if (!testRes.ok) throw new Error(`Test generate failed: ${testRes.status}`);
       this.ready = true;
@@ -75,7 +75,7 @@ export class OllamaLlmClient {
           num_predict: options?.maxTokens ?? 500,
         },
       }),
-      signal: AbortSignal.timeout(120_000), // 2 min — summarization can be slow on CPU
+      signal: AbortSignal.timeout(300_000), // 5 min — summarization can be slow on CPU
     });
 
     if (!res.ok) throw new Error(`Ollama generate error ${res.status}: ${await res.text()}`);
@@ -119,7 +119,7 @@ Summary:`;
           num_predict: options?.maxTokens ?? 2048,
         },
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(300_000), // 5 min
     });
 
     if (!res.ok) throw new Error(`Ollama chat error ${res.status}: ${await res.text()}`);

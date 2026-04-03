@@ -10,7 +10,7 @@ import { OllamaLlmClient } from '../llm/ollama.js';
 describe('OllamaLlmClient', () => {
   it('uses default model name when not specified', () => {
     const client = new OllamaLlmClient('http://localhost:11434');
-    expect(client.modelName).toBe('gemma4:26b');
+    expect(client.modelName).toBe('qwen3.5:4b');
   });
 
   it('accepts custom model name', () => {

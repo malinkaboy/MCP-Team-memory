@@ -637,6 +637,14 @@ export class MemoryManager {
   private async backfillQdrant(batchSize: number = 100): Promise<number> {
     if (!this.embeddingProvider?.isReady() || !this.vectorStore) return 0;
 
+    // Skip if Qdrant already has all entries (avoids redundant re-embedding on every restart)
+    const qdrantCount = await this.vectorStore.getPointCount('entries');
+    const pgCount = await this.storage.count();
+    if (qdrantCount >= 0 && pgCount >= 0 && qdrantCount >= pgCount) {
+      logger.info({ qdrantCount, pgCount }, 'Qdrant backfill skipped — already up to date');
+      return 0;
+    }
+
     const provider = this.embeddingProvider;
     let totalCount = 0;
     let failed = 0;

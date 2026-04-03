@@ -52,7 +52,7 @@ services:
       MEMORY_DECAY_WEIGHTS: ${MEMORY_DECAY_WEIGHTS:-0.3,0.2,0.3,0.2}
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text-v2-moe}
-      OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-gemma4:26b}
+      OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-qwen3.5:4b}
       VECTOR_STORE: ${VECTOR_STORE:-qdrant}
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
