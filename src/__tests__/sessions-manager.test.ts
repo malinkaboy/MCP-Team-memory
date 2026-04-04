@@ -9,18 +9,26 @@ function createMockSessionStorage() {
   return {
     createSession: vi.fn().mockResolvedValue({
       id: 'sess-1', agentTokenId: 'tok-1', summary: 'Test', messageCount: 2,
-      embeddingStatus: 'pending', tags: [], projectId: null, externalId: null,
+      embeddingStatus: 'queued', tags: [], projectId: null, externalId: null,
       name: null, workingDirectory: null, gitBranch: null, startedAt: null,
       endedAt: null, importedAt: '2026-01-01',
     }),
     findByExternalId: vi.fn().mockResolvedValue(null),
     listSessions: vi.fn().mockResolvedValue([]),
-    getSession: vi.fn().mockResolvedValue(null),
+    getSession: vi.fn().mockResolvedValue({
+      id: 'sess-1', agentTokenId: 'tok-1', summary: 'Test', messageCount: 2,
+      embeddingStatus: 'queued', tags: [], projectId: null, externalId: null,
+      name: null, workingDirectory: null, gitBranch: null, startedAt: null,
+      endedAt: null, importedAt: '2026-01-01',
+    }),
     getMessages: vi.fn().mockResolvedValue([
       { id: 'msg-1', sessionId: 'sess-1', role: 'user', content: 'Hello', messageIndex: 0, hasToolUse: false, toolNames: [], timestamp: null },
       { id: 'msg-2', sessionId: 'sess-1', role: 'assistant', content: 'Hi there', messageIndex: 1, hasToolUse: false, toolNames: [], timestamp: null },
     ]),
     updateEmbeddingStatus: vi.fn().mockResolvedValue(undefined),
+    updateSummary: vi.fn().mockResolvedValue(undefined),
+    getNextQueued: vi.fn().mockResolvedValue(null),
+    recoverStuckSessions: vi.fn().mockResolvedValue(0),
     deleteSession: vi.fn().mockResolvedValue(true),
   };
 }
@@ -68,7 +76,7 @@ describe('SessionManager', () => {
   });
 
   describe('import', () => {
-    it('creates session and triggers async embedding', async () => {
+    it('creates session and queues for processing', async () => {
       const result = await manager.importSession('tok-1', {
         summary: 'Discussed auth',
         messages: [
@@ -80,10 +88,21 @@ describe('SessionManager', () => {
       expect(storage.createSession).toHaveBeenCalled();
       expect(result.id).toBe('sess-1');
 
-      // Wait for async embedding
-      await vi.waitFor(() => {
-        expect(vectorStore.upsert).toHaveBeenCalled();
-      }, { timeout: 500 });
+      // Import should queue, not embed immediately
+      expect(storage.updateEmbeddingStatus).toHaveBeenCalledWith('sess-1', 'queued_embed');
+      expect(vectorStore.upsert).not.toHaveBeenCalled();
+    });
+
+    it('processQueue embeds queued session', async () => {
+      // Setup: getNextQueued returns a session
+      storage.getNextQueued.mockResolvedValueOnce({
+        id: 'sess-1', agentTokenId: 'tok-1', summary: 'Discussed auth', messageCount: 2,
+        embeddingStatus: 'queued_embed', tags: [], projectId: null, externalId: null,
+        name: null, workingDirectory: null, gitBranch: null, startedAt: null,
+        endedAt: null, importedAt: '2026-01-01',
+      });
+
+      await manager.processQueue();
 
       // Summary embedded to sessions collection
       expect(vectorStore.upsert).toHaveBeenCalledWith(
@@ -100,6 +119,8 @@ describe('SessionManager', () => {
           }),
         ]),
       );
+
+      expect(storage.updateEmbeddingStatus).toHaveBeenCalledWith('sess-1', 'complete');
     });
 
     it('returns existing session on duplicate external_id', async () => {

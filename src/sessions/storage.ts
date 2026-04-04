@@ -1,5 +1,6 @@
 import type { Pool } from 'pg';
 import type { Session, SessionMessage, SessionFilters } from './types.js';
+import logger from '../logger.js';
 
 export class SessionStorage {
   constructor(private pool: Pool) {}
@@ -143,6 +144,33 @@ export class SessionStorage {
       'UPDATE sessions SET embedding_status = $1 WHERE id = $2',
       [status, sessionId],
     );
+  }
+
+  async updateSummary(sessionId: string, summary: string): Promise<void> {
+    await this.pool.query(
+      'UPDATE sessions SET summary = $1 WHERE id = $2',
+      [summary, sessionId],
+    );
+  }
+
+  async getNextQueued(): Promise<Session | null> {
+    const { rows } = await this.pool.query(
+      `SELECT * FROM sessions WHERE embedding_status IN ('queued', 'queued_embed')
+       ORDER BY imported_at ASC LIMIT 1
+       FOR UPDATE SKIP LOCKED`,
+    );
+    return rows.length > 0 ? this.rowToSession(rows[0]) : null;
+  }
+
+  async recoverStuckSessions(): Promise<number> {
+    const { rowCount } = await this.pool.query(
+      `UPDATE sessions SET embedding_status = 'queued'
+       WHERE embedding_status IN ('summarizing', 'embedding')`,
+    );
+    if (rowCount && rowCount > 0) {
+      logger.info({ count: rowCount }, 'Recovered stuck sessions back to queue');
+    }
+    return rowCount ?? 0;
   }
 
   async deleteSession(sessionId: string, agentTokenId: string): Promise<boolean> {

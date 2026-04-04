@@ -166,7 +166,8 @@ async function main(): Promise<void> {
     const { SessionManager } = await import('./sessions/manager.js');
     const sessionStorage = new SessionStorage(storage.getPool());
     sessionManager = new SessionManager(sessionStorage, memoryManager.getVectorStore() ?? undefined, memoryManager.getEmbeddingProvider() ?? undefined, llmClient);
-    logger.info('Session manager initialized');
+    sessionManager.startWorker(30); // Process queued sessions every 30 sec
+    logger.info('Session manager initialized with background worker');
   }
 
   // AI Chat endpoint
@@ -287,7 +288,8 @@ async function main(): Promise<void> {
     // 5. Force-close remaining keep-alive connections
     server.closeAllConnections();
 
-    // 6. Close LLM client
+    // 6. Stop session queue worker and close LLM client
+    sessionManager?.stopWorker();
     await llmClient?.close();
 
     // 7. Close database pool (also stops auto-archive timer)

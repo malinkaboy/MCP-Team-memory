@@ -964,7 +964,7 @@ function setupHandlers(server: Server, memoryManager: MemoryManager, agentTokenS
               toolNames: m.tool_names,
             })),
           });
-          return { content: [{ type: 'text', text: `📥 Сессия импортирована: ${session.id}\nСообщений: ${session.messageCount}\nSummary: ${session.summary.slice(0, 200)}` }] };
+          return { content: [{ type: 'text', text: `📥 Сессия импортирована: ${session.id}\nСообщений: ${session.messageCount}\nСтатус: в очереди на обработку (LLM summary + embedding)` }] };
         }
 
         case 'session_list': {

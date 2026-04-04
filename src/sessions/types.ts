@@ -8,7 +8,7 @@ export interface Session {
   workingDirectory: string | null;
   gitBranch: string | null;
   messageCount: number;
-  embeddingStatus: 'pending' | 'processing' | 'complete' | 'failed';
+  embeddingStatus: 'queued' | 'queued_embed' | 'summarizing' | 'embedding' | 'complete' | 'failed';
   startedAt: string | null;
   endedAt: string | null;
   importedAt: string;
